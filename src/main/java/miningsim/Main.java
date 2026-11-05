@@ -9,12 +9,17 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.util.Locale;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import miningsim.app.SimulationControl;
+import miningsim.app.Camera2D;
+import miningsim.app.Brush;
 import miningsim.render.Java2DRenderer;
 import miningsim.render.Renderer;
 import miningsim.simulation.Simulation;
@@ -38,10 +43,12 @@ public final class Main {
         private final World world = new World(400, 300);
         private final SimulationControl control = new SimulationControl(new Simulation(world, 12345));
         private final Renderer renderer = new Java2DRenderer(world.width(), world.height());
+        private final Camera2D camera = new Camera2D();
         private Material brush = Material.SAND;
         private long previous = System.nanoTime(), accumulator, statsStart = previous;
         private int frames, ticks, fps, tps;
         private boolean left, right;
+        private boolean panLeft, panRight, panUp, panDown;
 
         Sandbox() {
             setPreferredSize(new Dimension(800, 600));
@@ -58,9 +65,19 @@ public final class Main {
                     if (SwingUtilities.isRightMouseButton(e)) right = false;
                 }
                 @Override public void mouseDragged(MouseEvent e) { paintAt(e); }
+                @Override public void mouseWheelMoved(MouseWheelEvent e) {
+                    requestFocusInWindow();
+                    camera.zoomAt(camera.zoom() * Math.pow(1.2, -e.getPreciseWheelRotation()), e.getX(), e.getY());
+                }
             };
             addMouseListener(mouse);
             addMouseMotionListener(mouse);
+            addMouseWheelListener(mouse);
+            addFocusListener(new FocusAdapter() {
+                @Override public void focusLost(FocusEvent e) {
+                    panLeft = panRight = panUp = panDown = left = right = false;
+                }
+            });
             addKeyListener(new KeyAdapter() {
                 @Override public void keyPressed(KeyEvent e) {
                     switch (e.getKeyCode()) {
@@ -73,6 +90,20 @@ public final class Main {
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
                         case KeyEvent.VK_C -> world.clear();
+                        case KeyEvent.VK_LEFT -> panLeft = true;
+                        case KeyEvent.VK_RIGHT -> panRight = true;
+                        case KeyEvent.VK_UP -> panUp = true;
+                        case KeyEvent.VK_DOWN -> panDown = true;
+                        case KeyEvent.VK_R -> camera.reset();
+                        default -> { }
+                    }
+                }
+                @Override public void keyReleased(KeyEvent e) {
+                    switch (e.getKeyCode()) {
+                        case KeyEvent.VK_LEFT -> panLeft = false;
+                        case KeyEvent.VK_RIGHT -> panRight = false;
+                        case KeyEvent.VK_UP -> panUp = false;
+                        case KeyEvent.VK_DOWN -> panDown = false;
                         default -> { }
                     }
                 }
@@ -83,17 +114,15 @@ public final class Main {
 
         private void paintAt(MouseEvent e) {
             if (getWidth() <= 0 || getHeight() <= 0 || (!left && !right)) return;
-            int cx = e.getX() * world.width() / getWidth();
-            int cy = e.getY() * world.height() / getHeight();
-            for (int dy = -3; dy <= 3; dy++) for (int dx = -3; dx <= 3; dx++) {
-                int x = cx + dx, y = cy + dy;
-                if (dx * dx + dy * dy <= 9 && world.contains(x, y))
-                    world.set(x, y, right ? Material.AIR : brush);
-            }
+            Brush.paint(world, camera, e.getX(), e.getY(), 3, right ? Material.AIR : brush);
         }
 
         private void update() {
             long now = System.nanoTime();
+            double secondsElapsed = Math.min((now - previous) / 1_000_000_000.0, 0.1);
+            double panDistance = 400 * secondsElapsed / camera.zoom();
+            camera.pan(((panRight ? 1 : 0) - (panLeft ? 1 : 0)) * panDistance,
+                    ((panDown ? 1 : 0) - (panUp ? 1 : 0)) * panDistance);
             accumulator = Math.min(accumulator + now - previous, TICK * 5);
             previous = now;
             if (control.paused()) accumulator = 0;
@@ -112,16 +141,17 @@ public final class Main {
         @Override protected void paintComponent(Graphics graphics) {
             super.paintComponent(graphics);
             Graphics2D g = (Graphics2D) graphics.create();
-            renderer.render(g, world, getWidth(), getHeight());
+            renderer.render(g, world, camera, getWidth(), getHeight());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 610), 60);
+            g.fillRect(0, 0, Math.min(getWidth(), 720), 77);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
+            g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.dispose();
             frames++;
         }
