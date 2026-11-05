@@ -9,6 +9,7 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.Locale;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -112,10 +113,13 @@ public final class Main {
             renderer.render(g, world, getWidth(), getHeight());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 610), 42);
+            g.fillRect(0, 0, Math.min(getWidth(), 610), 60);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
+            var metrics = control.metrics();
+            g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
+                    metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
             g.dispose();
             frames++;
         }

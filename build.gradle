@@ -12,3 +12,11 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 test { useJUnitPlatform() }
+
+tasks.register('benchmark', JavaExec) {
+    group = 'verification'
+    description = 'Runs the headless exploratory simulation benchmark.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.SimulationBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
