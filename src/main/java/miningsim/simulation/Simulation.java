@@ -79,7 +79,7 @@ public final class Simulation {
                 int x = reverse ? end - 1 - (i - start) : i;
                 if (moved[y * world.width() + x]) continue;
                 Material material = world.get(x, y);
-                if (material != Material.SAND && material != Material.WATER) continue;
+                if (material.category() != Material.Category.GRANULAR && material.category() != Material.Category.LIQUID) continue;
                 if (move(x, y, x, y + 1, material)) continue;
                 int direction = random.nextBoolean() ? 1 : -1;
                 if (move(x, y, x + direction, y + 1, material)
@@ -133,8 +133,8 @@ public final class Simulation {
     private boolean move(int x, int y, int nx, int ny, Material material) {
         if (!world.contains(nx, ny)) return false;
         Material target = world.get(nx, ny);
-        // Sand displaces water, preserving both particles; other moves require air.
-        if (target != Material.AIR && !(material == Material.SAND && target == Material.WATER)) return false;
+        // Granular materials displace liquid, preserving both particles.
+        if (target != Material.AIR && !material.canDisplace(target)) return false;
         if (target == Material.WATER && moved[ny * world.width() + nx]) return false;
         world.set(nx, ny, material);
         world.set(x, y, target);
