@@ -2,7 +2,7 @@
 
 `World` owns the fixed-size, flat `byte[]` material state; coordinates are checked and out-of-bounds access throws. Callers do not receive the mutable array. Painting and clearing deliberately replace cells; simulation movement preserves material counts.
 
-`Simulation` is headless, runs only on explicit `step()` calls, and depends on neither Swing nor time. Seeded randomness, bottom-up traversal and a per-tick moved mask define the current discrete rules. Sand can exchange places with water, but cannot displace water that has already moved in that tick. The full grid and moved mask are scanned each tick; no stable particle identities are stored.
+`Simulation` is headless, runs only on explicit `step()` calls, and depends on neither Swing nor time. Seeded randomness, bottom-up traversal and a per-tick moved mask define the current discrete rules. Sand can exchange places with water, but cannot displace water that has already moved in that tick. Water can move once per tick across up to eight contiguous air cells horizontally; see `water-flow.md`. The full grid and moved mask are scanned each tick; no stable particle identities are stored.
 
 `SimulationControl` implements pause and single-step and times actual calls to `step()` outside the physics. `Main` owns the 60 Hz accumulator and caps catch-up at five ticks; elapsed time beyond that cap is dropped. Paused time is discarded. FPS, TPS and timings measure different things.
 

@@ -6,6 +6,7 @@ import miningsim.world.Material;
 import miningsim.world.World;
 
 public final class Simulation {
+    private static final int WATER_REACH = 8;
     private final World world;
     private final Random random;
     private final boolean[] moved;
@@ -27,11 +28,53 @@ public final class Simulation {
                 if (material != Material.SAND && material != Material.WATER) continue;
                 if (move(x, y, x, y + 1, material)) continue;
                 int direction = random.nextBoolean() ? 1 : -1;
-                int targetY = material == Material.SAND ? y + 1 : y;
-                if (!move(x, y, x + direction, targetY, material))
-                    move(x, y, x - direction, targetY, material);
+                if (move(x, y, x + direction, y + 1, material)
+                        || move(x, y, x - direction, y + 1, material)) continue;
+                if (material == Material.WATER) flowSideways(x, y, direction);
             }
         }
+    }
+
+    private void flowSideways(int x, int y, int direction) {
+        int first = distanceToDrop(x, y, direction);
+        int second = distanceToDrop(x, y, -direction);
+        if (first > 0 || second > 0) {
+            int offset = first > 0 && (second == 0 || first <= second) ? direction * first : -direction * second;
+            move(x, y, x + offset, y, Material.WATER);
+            return;
+        }
+        // When the drop is beyond the search horizon, travel toward the longer
+        // open run. Water cannot cross other materials or an occupied cell.
+        if (world.contains(x, y + 1) && world.get(x, y + 1) == Material.WATER) {
+            int forward = openRun(x, y, direction), backward = openRun(x, y, -direction);
+            if (forward > 0 || backward > 0) {
+                int offset = forward >= backward ? direction * forward : -direction * backward;
+                move(x, y, x + offset, y, Material.WATER);
+            }
+            return;
+        }
+        if (!move(x, y, x + direction, y, Material.WATER))
+            move(x, y, x - direction, y, Material.WATER);
+    }
+
+    private int openRun(int x, int y, int direction) {
+        int distance = 0;
+        while (distance < WATER_REACH) {
+            int nx = x + direction * (distance + 1);
+            if (!world.contains(nx, y) || world.get(nx, y) != Material.AIR) break;
+            distance++;
+        }
+        return distance;
+    }
+
+    // Only cross contiguous air; move at most once, to the first reachable drop.
+    private int distanceToDrop(int x, int y, int direction) {
+        for (int distance = 1; distance <= WATER_REACH; distance++) {
+            int nx = x + direction * distance;
+            if (!world.contains(nx, y) || world.get(nx, y) != Material.AIR) break;
+            if (world.contains(nx, y + 1) && world.get(nx, y + 1) == Material.AIR) return distance;
+        }
+        return 0;
     }
 
     private boolean move(int x, int y, int nx, int ny, Material material) {

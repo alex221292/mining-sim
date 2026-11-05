@@ -115,6 +115,10 @@ Fixed-size world, sand/water/stone/wood, Java2D, painting, pause/step, diagnosti
 
 Deterministic invariant tests, bounded tick timing in the overlay, a headless seeded benchmark, and architecture/performance notes are implemented. On the documented Ryzen 9 5900X / JDK 25 run, active-world mean step times were 1.079 ms (400×300), 4.413 ms (800×600), and 13.414 ms (1600×900). These are exploratory, headless, single-run measurements, not frame-time guarantees; see `docs/performance-baseline.md` for methodology, other scenarios and limitations. GUI verification of the new overlay remains outstanding.
 
+### M1.6 — Water flow
+
+Water prioritizes downward, diagonal and bounded lateral movement, with deterministic basin and conservation tests. A water particle may travel across up to eight contiguous air cells in one horizontal move, still at most once per tick. This is a local discrete approximation rather than a pressure or velocity model. The basin fixture and before/after benchmark are documented in `docs/water-flow.md`; graphical behavior after the change has not been verified in this environment.
+
 ### M2 — Performance and richer materials
 
 Profiling with Java Flight Recorder; dirty regions; materials such as gravel and soil; basic material interactions; benchmarks with larger worlds. Optimize only against measured bottlenecks.

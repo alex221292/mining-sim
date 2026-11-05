@@ -29,6 +29,7 @@ If the repository is empty, bootstrap the Gradle Java application, Gradle Wrappe
 - Do not introduce Spring, Guice, reflection-based DI, ORM, a generic ECS, an event bus, or networking.
 - Avoid allocating objects in per-cell update loops unless necessary and justified.
 - Keep source code and identifiers in English; documentation and explanations may be in Russian.
+- Keep Russian `_ru.md` translations synchronized whenever their primary documentation changes; add a translation for new primary documentation. `AGENTS.md` remains the authoritative agent instruction file.
 - Prefer clear names and short comments explaining *why*, not comments restating code.
 
 ## Simulation correctness

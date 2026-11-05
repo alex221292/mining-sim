@@ -52,7 +52,7 @@ class SimulationInvariantsTest {
     @Test void sandCannotDisplaceWaterThatAlreadyMovedThisTick() {
         World w = new World(3, 3);
         w.set(0, 0, Material.SAND); w.set(1, 1, Material.WATER);
-        w.set(0, 2, Material.STONE); w.set(1, 2, Material.STONE); w.set(2, 1, Material.STONE);
+        w.set(0, 2, Material.STONE); w.set(1, 2, Material.STONE); w.set(2, 2, Material.STONE); w.set(2, 1, Material.STONE);
         new Simulation(w, 5).step();
         assertEquals(Material.WATER, w.get(0, 1));
         assertEquals(Material.SAND, w.get(1, 1));
