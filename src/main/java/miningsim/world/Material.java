@@ -2,7 +2,8 @@ package miningsim.world;
 
 public enum Material {
     AIR(0, Category.EMPTY), STONE(1, Category.STATIC), SAND(2, Category.GRANULAR),
-    WATER(3, Category.LIQUID), WOOD(4, Category.STATIC);
+    WATER(3, Category.LIQUID), WOOD(4, Category.STATIC),
+    GRAVEL(5, Category.GRANULAR), SOIL(6, Category.GRANULAR);
 
     public enum Category { EMPTY, STATIC, GRANULAR, LIQUID }
     private static final Material[] BY_ID = new Material[256];

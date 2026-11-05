@@ -121,7 +121,7 @@ Water prioritizes downward, diagonal and bounded lateral movement, with determin
 
 ### M2 — Performance and richer materials
 
-Profiling with Java Flight Recorder; dirty regions; materials such as gravel and soil; basic material interactions; benchmarks with larger worlds. Optimize only against measured bottlenecks.
+Profiling with Java Flight Recorder, explicit material IDs/categories, gravel and locally cohesive soil, interaction tests and larger-world benchmarks are implemented. FULL_SCAN remains the default; ACTIVE_REGIONS is experimental due to dense-world overhead and scheduling differences. Material rules and limitations: `docs/materials.md`; measurements: `docs/m2-material-performance.md`. No chunk storage or global structural mechanics is introduced.
 
 ### M3 — Chunked world and camera
 

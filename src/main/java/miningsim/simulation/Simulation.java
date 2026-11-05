@@ -81,11 +81,17 @@ public final class Simulation {
                 Material material = world.get(x, y);
                 if (material.category() != Material.Category.GRANULAR && material.category() != Material.Category.LIQUID) continue;
                 if (move(x, y, x, y + 1, material)) continue;
+                if (material == Material.SOIL) continue;
                 int direction = random.nextBoolean() ? 1 : -1;
-                if (move(x, y, x + direction, y + 1, material)
-                        || move(x, y, x - direction, y + 1, material)) continue;
+                if (diagonal(x, y, direction, material) || diagonal(x, y, -direction, material)) continue;
                 if (material == Material.WATER) flowSideways(x, y, direction);
         }
+    }
+
+    private boolean diagonal(int x, int y, int direction, Material material) {
+        int nx = x + direction;
+        if (material == Material.GRAVEL && (!world.contains(nx, y) || world.get(nx, y) != Material.AIR)) return false;
+        return move(x, y, nx, y + 1, material);
     }
 
     private void flowSideways(int x, int y, int direction) {

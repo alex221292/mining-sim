@@ -28,3 +28,11 @@ tasks.register('activityBenchmark', JavaExec) {
     mainClass = 'miningsim.benchmark.ActivityBenchmark'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+
+tasks.register('materialBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Runs exploratory mixed-material simulation scenarios.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.MaterialBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}

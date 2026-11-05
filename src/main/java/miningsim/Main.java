@@ -68,6 +68,8 @@ public final class Main {
                         case KeyEvent.VK_2 -> brush = Material.WATER;
                         case KeyEvent.VK_3 -> brush = Material.STONE;
                         case KeyEvent.VK_4 -> brush = Material.WOOD;
+                        case KeyEvent.VK_5 -> brush = Material.GRAVEL;
+                        case KeyEvent.VK_6 -> brush = Material.SOIL;
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
                         case KeyEvent.VK_C -> world.clear();
@@ -115,7 +117,7 @@ public final class Main {
             g.setStroke(new BasicStroke(1));
             g.fillRect(0, 0, Math.min(getWidth(), 610), 60);
             g.setColor(Color.WHITE);
-            g.drawString("1 Sand  2 Water  3 Stone  4 Wood | Space Pause  N Step  C Clear", 8, 16);
+            g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
