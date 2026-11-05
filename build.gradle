@@ -20,3 +20,11 @@ tasks.register('benchmark', JavaExec) {
     mainClass = 'miningsim.benchmark.SimulationBenchmark'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+
+tasks.register('activityBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Compares full-grid and experimental activity traversal.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.ActivityBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}

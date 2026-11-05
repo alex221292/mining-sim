@@ -9,6 +9,7 @@ public final class World {
     private final byte[] cells;
     private final int tileColumns, tileRows;
     private final boolean[] changedTiles;
+    private boolean trackActivity;
 
     public World(int width, int height) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("Dimensions must be positive");
@@ -34,11 +35,16 @@ public final class World {
         byte id = Objects.requireNonNull(material).id();
         if (cells[index] == id) return;
         cells[index] = id;
-        changedTiles[(y / ACTIVITY_TILE_SIZE) * tileColumns + x / ACTIVITY_TILE_SIZE] = true;
+        if (trackActivity) changedTiles[(y / ACTIVITY_TILE_SIZE) * tileColumns + x / ACTIVITY_TILE_SIZE] = true;
     }
     public void clear() { Arrays.fill(cells, Material.AIR.id()); Arrays.fill(changedTiles, true); }
     public int activityTileColumns() { return tileColumns; }
     public int activityTileRows() { return tileRows; }
+    /** A world has one simulation owner; switching mode invalidates the activity mask. */
+    public void setActivityTracking(boolean enabled) {
+        trackActivity = enabled;
+        if (enabled) Arrays.fill(changedTiles, true);
+    }
     /** Transfers pending changes to the simulation's activity mask, then clears them. */
     public void collectActivity(boolean[] activity) {
         if (activity.length != changedTiles.length) throw new IllegalArgumentException("wrong activity mask size");
