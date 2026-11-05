@@ -10,19 +10,29 @@ public final class Simulation {
     private final World world;
     private final Random random;
     private final boolean[] moved;
+    private final boolean[] active;
+    private final int tileColumns;
 
     public Simulation(World world, long seed) {
         this.world = world;
         random = new Random(seed);
         moved = new boolean[world.width() * world.height()];
+        tileColumns = world.activityTileColumns();
+        active = new boolean[tileColumns * world.activityTileRows()];
     }
 
     public void step() {
+        world.collectActivity(active);
         Arrays.fill(moved, false);
         boolean reverse = random.nextBoolean();
         for (int y = world.height() - 1; y >= 0; y--) {
-            for (int i = 0; i < world.width(); i++) {
-                int x = reverse ? world.width() - 1 - i : i;
+            for (int column = 0; column < tileColumns; column++) {
+                int tileX = reverse ? tileColumns - 1 - column : column;
+                if (!active[(y / World.ACTIVITY_TILE_SIZE) * tileColumns + tileX]) continue;
+                int start = tileX * World.ACTIVITY_TILE_SIZE;
+                int end = Math.min(world.width(), start + World.ACTIVITY_TILE_SIZE);
+                for (int i = start; i < end; i++) {
+                int x = reverse ? end - 1 - (i - start) : i;
                 if (moved[y * world.width() + x]) continue;
                 Material material = world.get(x, y);
                 if (material != Material.SAND && material != Material.WATER) continue;
@@ -31,8 +41,10 @@ public final class Simulation {
                 if (move(x, y, x + direction, y + 1, material)
                         || move(x, y, x - direction, y + 1, material)) continue;
                 if (material == Material.WATER) flowSideways(x, y, direction);
+                }
             }
         }
+        Arrays.fill(active, false);
     }
 
     private void flowSideways(int x, int y, int direction) {
