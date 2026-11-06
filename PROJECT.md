@@ -131,6 +131,8 @@ M3.1 camera and M3.2 bounded 64×64 chunk storage are implemented; generation, c
 
 M3.3 adds cross-boundary and activity lifecycle validation, an optional headless propagation benchmark and diagnostics; the existing physics and experimental activity scheduling are unchanged. See `docs/m3-activity-propagation.md` for limitations and results.
 
+M3.4 adds bounded world-only versioned MSIM save/load with CRC32 and desktop controls. It does not save an exact simulation snapshot or implement streaming chunks. See `docs/m3-save-format.md`.
+
 ### M4 — Mining and structural stability
 
 Player, excavation tools, support placement, simple connected-component stability checks, falling detached masses or conversion to debris. Later, approximate loads, rock strength, and support failure. Do **not** claim physical realism without validation.

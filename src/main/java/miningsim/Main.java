@@ -12,16 +12,24 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.InputEvent;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Locale;
 import javax.swing.JFrame;
+import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import miningsim.app.SimulationControl;
 import miningsim.app.Camera2D;
 import miningsim.app.Brush;
 import miningsim.render.Java2DRenderer;
 import miningsim.render.Renderer;
+import miningsim.persistence.WorldIO;
 import miningsim.simulation.Simulation;
 import miningsim.world.Material;
 import miningsim.world.World;
@@ -40,10 +48,11 @@ public final class Main {
 
     private static final class Sandbox extends JPanel {
         private static final long TICK = 1_000_000_000L / 60;
-        private final World world = new World(400, 300);
-        private final SimulationControl control = new SimulationControl(new Simulation(world, 12345));
-        private final Renderer renderer = new Java2DRenderer(world.width(), world.height());
+        private World world = new World(400, 300);
+        private SimulationControl control = new SimulationControl(new Simulation(world, 12345));
+        private Renderer renderer = new Java2DRenderer(world.width(), world.height());
         private final Camera2D camera = new Camera2D();
+        private final Timer timer;
         private Material brush = Material.SAND;
         private long previous = System.nanoTime(), accumulator, statsStart = previous;
         private int frames, ticks, fps, tps;
@@ -80,6 +89,11 @@ public final class Main {
             });
             addKeyListener(new KeyAdapter() {
                 @Override public void keyPressed(KeyEvent e) {
+                    if ((e.getModifiersEx() & InputEvent.CTRL_DOWN_MASK) != 0) {
+                        if (e.getKeyCode() == KeyEvent.VK_S) chooseFile(true);
+                        else if (e.getKeyCode() == KeyEvent.VK_O) chooseFile(false);
+                        return;
+                    }
                     switch (e.getKeyCode()) {
                         case KeyEvent.VK_1 -> brush = Material.SAND;
                         case KeyEvent.VK_2 -> brush = Material.WATER;
@@ -109,7 +123,39 @@ public final class Main {
                 }
             });
             // Timer, input, simulation and painting all run on the Swing event thread.
-            new Timer(8, e -> update()).start();
+            timer = new Timer(8, e -> update());
+            timer.start();
+        }
+
+        private void chooseFile(boolean save) {
+            // Modal dialogs run a nested event loop; stopping the timer freezes the world.
+            timer.stop();
+            try {
+                JFileChooser chooser = new JFileChooser();
+                chooser.setFileFilter(new FileNameExtensionFilter("Mining Sim world (*.msim)", "msim"));
+                int result = save ? chooser.showSaveDialog(this) : chooser.showOpenDialog(this);
+                if (result != JFileChooser.APPROVE_OPTION) return;
+                Path path = chooser.getSelectedFile().toPath();
+                if (save) {
+                    if (!path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".msim"))
+                        path = path.resolveSibling(path.getFileName() + ".msim");
+                    if (Files.exists(path) && JOptionPane.showConfirmDialog(this, "Replace existing file?", "Save world",
+                            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
+                    WorldIO.write(world, path);
+                } else {
+                    World loaded = WorldIO.read(path);
+                    SimulationControl nextControl = new SimulationControl(new Simulation(loaded, 12345));
+                    if (control.paused()) nextControl.togglePause();
+                    Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
+                    world = loaded; control = nextControl; renderer = nextRenderer;
+                    camera.reset();
+                }
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, e.getMessage(), save ? "Save failed" : "Load failed", JOptionPane.ERROR_MESSAGE);
+            } finally {
+                previous = System.nanoTime(); accumulator = 0;
+                timer.start(); requestFocusInWindow(); repaint();
+            }
         }
 
         private void paintAt(MouseEvent e) {
@@ -144,7 +190,7 @@ public final class Main {
             renderer.render(g, world, camera, getWidth(), getHeight());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 720), 77);
+            g.fillRect(0, 0, Math.min(getWidth(), 720), 94);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
@@ -152,6 +198,7 @@ public final class Main {
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
             g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
+            g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
             g.dispose();
             frames++;
         }

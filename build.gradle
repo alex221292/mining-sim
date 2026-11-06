@@ -53,3 +53,11 @@ tasks.register('propagationBenchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
     if (project.hasProperty('traceActivity')) args 'trace'
 }
+
+tasks.register('persistenceBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Measures exploratory MSIM file save/load costs.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.PersistenceBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
