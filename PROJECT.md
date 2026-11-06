@@ -129,6 +129,8 @@ Chunk storage, camera/viewport, world generation, sleeping/inactive chunks, pers
 
 M3.1 camera and M3.2 bounded 64×64 chunk storage are implemented; generation, chunk streaming and persistence remain future work. Full-grid simulation benchmark results and the substantial storage overhead observed in this environment are documented in `docs/m3-chunk-performance.md`.
 
+M3.3 adds cross-boundary and activity lifecycle validation, an optional headless propagation benchmark and diagnostics; the existing physics and experimental activity scheduling are unchanged. See `docs/m3-activity-propagation.md` for limitations and results.
+
 ### M4 — Mining and structural stability
 
 Player, excavation tools, support placement, simple connected-component stability checks, falling detached masses or conversion to debris. Later, approximate loads, rock strength, and support failure. Do **not** claim physical realism without validation.

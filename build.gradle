@@ -44,3 +44,12 @@ tasks.register('worldAccessBenchmark', JavaExec) {
     mainClass = 'miningsim.benchmark.WorldAccessBenchmark'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+
+tasks.register('propagationBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Measures cross-boundary activity scenarios and optional lifecycle trace.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.PropagationBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    if (project.hasProperty('traceActivity')) args 'trace'
+}
