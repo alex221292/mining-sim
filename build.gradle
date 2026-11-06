@@ -36,3 +36,11 @@ tasks.register('materialBenchmark', JavaExec) {
     mainClass = 'miningsim.benchmark.MaterialBenchmark'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+
+tasks.register('worldAccessBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Runs exploratory World get/set access patterns.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.WorldAccessBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
