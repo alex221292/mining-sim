@@ -38,6 +38,24 @@ public final class World {
         return chunks[(y >>> CHUNK_SHIFT) * chunkColumns + (x >>> CHUNK_SHIFT)];
     }
     public Material get(int x, int y) { return Material.fromId(chunkAt(x, y).cells[((y & CHUNK_MASK) << CHUNK_SHIFT) | (x & CHUNK_MASK)]); }
+    /** Reusable live read view of one bounded row segment; not a snapshot. */
+    public final class RowSegment {
+        private byte[] rowCells;
+        private int rowOffset, start, end;
+
+        public void bind(int y, int x) {
+            Chunk chunk = chunkAt(x, y);
+            rowCells = chunk.cells;
+            rowOffset = (y & CHUNK_MASK) << CHUNK_SHIFT;
+            start = (x >>> CHUNK_SHIFT) << CHUNK_SHIFT;
+            end = Math.min(width, start + CHUNK_SIZE);
+        }
+        public Material get(int x) {
+            if (x < start || x >= end || rowCells == null) throw new IndexOutOfBoundsException("x=" + x);
+            return Material.fromId(rowCells[rowOffset + (x & CHUNK_MASK)]);
+        }
+    }
+    public RowSegment newRowSegment() { return new RowSegment(); }
     public void set(int x, int y, Material material) {
         Chunk chunk = chunkAt(x, y);
         byte id = Objects.requireNonNull(material).id();

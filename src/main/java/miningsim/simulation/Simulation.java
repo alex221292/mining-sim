@@ -12,6 +12,7 @@ public final class Simulation {
     private final Random random;
     private final boolean[] moved;
     private final boolean[] active;
+    private final World.RowSegment rowSegment;
     private final int tileColumns;
     private final Mode mode;
     private final boolean instrument;
@@ -30,6 +31,7 @@ public final class Simulation {
         moved = new boolean[world.width() * world.height()];
         tileColumns = world.activityTileColumns();
         active = new boolean[tileColumns * world.activityTileRows()];
+        rowSegment = world.newRowSegment();
         world.setActivityTracking(mode != Mode.FULL_SCAN);
     }
 
@@ -75,16 +77,23 @@ public final class Simulation {
 
     private void scanRange(int y, int start, int end, boolean reverse) {
         if (instrument) visited += end - start;
-        for (int i = start; i < end; i++) {
-                int x = reverse ? end - 1 - (i - start) : i;
-                if (moved[y * world.width() + x]) continue;
-                Material material = world.get(x, y);
+        int x = reverse ? end - 1 : start;
+        while (x >= start && x < end) {
+            rowSegment.bind(y, x);
+            int segmentStart = Math.max(start, x / World.CHUNK_SIZE * World.CHUNK_SIZE);
+            int segmentEnd = Math.min(end, segmentStart + World.CHUNK_SIZE - (segmentStart % World.CHUNK_SIZE));
+            while (x >= segmentStart && x < segmentEnd) {
+                int current = x;
+                x += reverse ? -1 : 1;
+                if (moved[y * world.width() + current]) continue;
+                Material material = rowSegment.get(current);
                 if (material.category() != Material.Category.GRANULAR && material.category() != Material.Category.LIQUID) continue;
-                if (move(x, y, x, y + 1, material)) continue;
+                if (move(current, y, current, y + 1, material)) continue;
                 if (material == Material.SOIL) continue;
                 int direction = random.nextBoolean() ? 1 : -1;
-                if (diagonal(x, y, direction, material) || diagonal(x, y, -direction, material)) continue;
-                if (material == Material.WATER) flowSideways(x, y, direction);
+                if (diagonal(current, y, direction, material) || diagonal(current, y, -direction, material)) continue;
+                if (material == Material.WATER) flowSideways(current, y, direction);
+            }
         }
     }
 
