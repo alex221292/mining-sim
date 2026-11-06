@@ -50,6 +50,7 @@ public final class World {
     public Mode mode() { return mode; }
     /** Replacing or attaching a consumer requires it to rebuild from the current world. */
     public void setChangeSink(ChangeSink sink) { changeSink = sink; if (sink != null) sink.invalidated(); }
+    public boolean hasChangeSink(ChangeSink sink) { return sink != null && changeSink == sink; }
     public int width() { return width; }
     public int height() { return height; }
     public boolean contains(int x, int y) { return x >= 0 && x < width && y >= 0 && y < height; }

@@ -21,6 +21,14 @@ tasks.register('benchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+tasks.register('rockConnectivityBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Measures the headless rock connectivity reference.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.RockConnectivityBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
 tasks.register('activityBenchmark', JavaExec) {
     group = 'verification'
     description = 'Compares full-grid and experimental activity traversal.'
