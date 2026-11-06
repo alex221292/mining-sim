@@ -1,5 +1,7 @@
 # M4.0 — Structural Physics & Construction: design
 
+Historical M4.0 snapshot: M4.1 is now implemented; see `m4-1-bedrock.md` for current behavior.
+
 **Status:** design only. Confirmed decisions below are product constraints; all algorithms, staged interfaces, fixture dimensions and migration procedures labeled *proposed* require validation in later milestones. No M4 code, new material ID, file version or controls exist yet. M4.1–M4.10 are independently reviewable slices, not a promise of physical accuracy or a commitment to a particular external physics library.
 
 ## 1. Existing system and integration boundary

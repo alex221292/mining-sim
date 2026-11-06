@@ -48,7 +48,7 @@ public final class Main {
 
     private static final class Sandbox extends JPanel {
         private static final long TICK = 1_000_000_000L / 60;
-        private World world = new World(400, 300);
+        private World world = new World(400, 300, World.Mode.BEDROCK_ENABLED);
         private SimulationControl control = new SimulationControl(new Simulation(world, 12345));
         private Renderer renderer = new Java2DRenderer(world.width(), world.height());
         private final Camera2D camera = new Camera2D();

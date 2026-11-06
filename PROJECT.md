@@ -147,10 +147,9 @@ Progression, equipment, hazards, water management, material-specific mining, inv
 
 ## Open design questions
 
-- Pixel-sized world cells versus coarser terrain blocks plus fine particles? **Provisional choice:** uniform cells for M1; revisit after prototyping mining and structural mechanics.
-- How should large connected rock formations fall or fracture?
+- One cell represents 10 cm; adaptive structural elements remain a future optimization, not a different cell scale.
+- Detached rock becomes coherent rigid fragments; impact fracture and collision details remain open.
 - How should water volume and pressure be approximated at different scales?
-- What scale is one cell in the eventual game?
 - What performance target is appropriate for active simulation cells on the target hardware?
 
 ## Definition of done for changes

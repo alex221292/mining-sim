@@ -39,7 +39,7 @@ class WorldIOTest {
             World w = new World(size[0], size[1]); byte[] empty = bytes(w); same(w, load(empty));
             assertEquals(24 + size[0] * size[1], empty.length);
             for (int y = 0; y < w.height(); y++) for (int x = 0; x < w.width(); x++)
-                w.set(x, y, Material.fromId((byte) ((x + 3 * y) % Material.values().length)));
+                w.set(x, y, Material.fromId((byte) ((x + 3 * y) % 7)));
             byte[] saved = bytes(w); World restored = load(saved); same(w, restored);
             assertArrayEquals(saved, bytes(restored)); assertArrayEquals(saved, bytes(w));
         }
@@ -82,6 +82,7 @@ class WorldIOTest {
         byte[] good = bytes(new World(65, 2));
         for (int length = 0; length < good.length; length++) invalid(Arrays.copyOf(good, length), "truncated");
         byte[] bad = good.clone(); bad[20] = (byte) 127; crc(bad); invalid(bad, "material ID");
+        bad = good.clone(); bad[20] = 7; crc(bad); invalid(bad, "material ID");
         bad = good.clone(); bad[20] = Material.SAND.id(); invalid(bad, "checksum");
         bad = good.clone(); bad[bad.length - 1] ^= 1; invalid(bad, "checksum");
         bad = Arrays.copyOf(good, good.length + 1); invalid(bad, "trailing");

@@ -25,6 +25,7 @@ public final class WorldIO {
     private WorldIO() { }
 
     public static void write(World world, OutputStream output) throws IOException {
+        validateMode(world);
         validateDimensions(world.width(), world.height());
         CRC32 crc = new CRC32();
         DataOutputStream checked = new DataOutputStream(new CheckedOutputStream(output, crc));
@@ -56,6 +57,7 @@ public final class WorldIO {
                     for (int y = cy; y < Math.min(cy + chunkSize, height); y++)
                         for (int x = cx; x < Math.min(cx + chunkSize, width); x++) {
                             int id = checked.readUnsignedByte();
+                            if (id > 6) throw new IOException("Invalid material ID " + id + " at " + x + "," + y);
                             Material material;
                             try { material = Material.fromId((byte) id); }
                             catch (IllegalArgumentException e) { throw new IOException("Invalid material ID " + id + " at " + x + "," + y, e); }
@@ -78,6 +80,7 @@ public final class WorldIO {
 
     /** Write to a sibling temporary file first, so an interrupted write does not truncate the destination. */
     public static void write(World world, Path path) throws IOException {
+        validateMode(world);
         Path absolute = path.toAbsolutePath();
         Path temp = Files.createTempFile(absolute.getParent(), ".msim-", ".tmp");
         try {
@@ -85,6 +88,10 @@ public final class WorldIO {
             try { Files.move(temp, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
             catch (AtomicMoveNotSupportedException e) { Files.move(temp, absolute, StandardCopyOption.REPLACE_EXISTING); }
         } finally { Files.deleteIfExists(temp); }
+    }
+
+    private static void validateMode(World world) throws IOException {
+        if (world.mode() != World.Mode.LEGACY) throw new IOException("MSIM v1 cannot save bedrock-enabled worlds; a newer format is required");
     }
 
     private static void validateDimensions(int width, int height) throws IOException {

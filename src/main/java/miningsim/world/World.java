@@ -4,6 +4,13 @@ import java.util.Arrays;
 import java.util.Objects;
 
 public final class World {
+    public enum Mode { LEGACY, BEDROCK_ENABLED }
+    public enum Mutation { CHANGED, NO_OP, REJECTED }
+    /** Synchronous single consumer; callbacks must not mutate this world or throw. */
+    public interface ChangeSink {
+        void changed(int x, int y, byte previous, byte next);
+        void invalidated();
+    }
     public static final int ACTIVITY_TILE_SIZE = 32;
     public static final int CHUNK_SIZE = Chunk.SIZE;
     private static final int CHUNK_SHIFT = 6, CHUNK_MASK = CHUNK_SIZE - 1;
@@ -13,9 +20,15 @@ public final class World {
     private final int tileColumns, tileRows;
     private final boolean[] changedTiles;
     private boolean trackActivity;
+    private final Mode mode;
+    private ChangeSink changeSink;
 
     public World(int width, int height) {
+        this(width, height, Mode.LEGACY);
+    }
+    public World(int width, int height, Mode mode) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("Dimensions must be positive");
+        this.mode = Objects.requireNonNull(mode);
         this.width = width;
         this.height = height;
         Math.multiplyExact(width, height);
@@ -27,8 +40,16 @@ public final class World {
         tileRows = (height - 1) / ACTIVITY_TILE_SIZE + 1;
         changedTiles = new boolean[tileColumns * tileRows];
         Arrays.fill(changedTiles, true);
+        if (mode == Mode.BEDROCK_ENABLED) {
+            for (int x = 0; x < width; x++) {
+                chunkAt(x, height - 1).cells[((height - 1 & CHUNK_MASK) << CHUNK_SHIFT) | (x & CHUNK_MASK)] = Material.BEDROCK.id();
+            }
+        }
     }
 
+    public Mode mode() { return mode; }
+    /** Replacing or attaching a consumer requires it to rebuild from the current world. */
+    public void setChangeSink(ChangeSink sink) { changeSink = sink; if (sink != null) sink.invalidated(); }
     public int width() { return width; }
     public int height() { return height; }
     public boolean contains(int x, int y) { return x >= 0 && x < width && y >= 0 && y < height; }
@@ -56,15 +77,32 @@ public final class World {
         }
     }
     public RowSegment newRowSegment() { return new RowSegment(); }
-    public void set(int x, int y, Material material) {
+    public Mutation set(int x, int y, Material material) {
         Chunk chunk = chunkAt(x, y);
         byte id = Objects.requireNonNull(material).id();
         int localIndex = ((y & CHUNK_MASK) << CHUNK_SHIFT) | (x & CHUNK_MASK);
-        if (chunk.cells[localIndex] == id) return;
+        byte previous = chunk.cells[localIndex];
+        if (previous == id) return Mutation.NO_OP;
+        if (material == Material.BEDROCK || previous == Material.BEDROCK.id()) return Mutation.REJECTED;
         chunk.cells[localIndex] = id;
         if (trackActivity) changedTiles[(y / ACTIVITY_TILE_SIZE) * tileColumns + x / ACTIVITY_TILE_SIZE] = true;
+        if (changeSink != null) changeSink.changed(x, y, previous, id);
+        return Mutation.CHANGED;
     }
-    public void clear() { for (Chunk chunk : chunks) chunk.clear(); Arrays.fill(changedTiles, true); }
+    public void clear() {
+        if (mode == Mode.LEGACY) {
+            for (Chunk chunk : chunks) chunk.clear();
+        } else {
+            int bottomChunkRow = (height - 1) >>> CHUNK_SHIFT;
+            int bottomOffset = ((height - 1) & CHUNK_MASK) << CHUNK_SHIFT;
+            for (int i = 0; i < chunks.length; i++) {
+                if (i / chunkColumns == bottomChunkRow) Arrays.fill(chunks[i].cells, 0, bottomOffset, Material.AIR.id());
+                else chunks[i].clear();
+            }
+        }
+        Arrays.fill(changedTiles, true);
+        if (changeSink != null) changeSink.invalidated();
+    }
     public int activityTileColumns() { return tileColumns; }
     public int activityTileRows() { return tileRows; }
     /** A world has one simulation owner; switching mode invalidates the activity mask. */
