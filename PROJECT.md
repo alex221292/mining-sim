@@ -135,7 +135,7 @@ M3.4 adds bounded world-only versioned MSIM save/load with CRC32 and desktop con
 
 ### M4 — Mining and structural stability
 
-Player, excavation tools, support placement, simple connected-component stability checks, falling detached masses or conversion to debris. Later, approximate loads, rock strength, and support failure. Do **not** claim physical realism without validation.
+M4.0 is design only: the confirmed structural physics and construction decisions, proposed ownership, M4.1–M4.10 roadmap and reference scenes are in `docs/m4-structural-design.md`. Connectivity alone is not a stress solver. Numerical strengths and several implementation choices remain uncalibrated; no M4 physics or construction is implemented by M4.0. Do **not** claim physical realism without validation.
 
 ### M5 — Better graphics
 
