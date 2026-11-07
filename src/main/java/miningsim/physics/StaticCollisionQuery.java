@@ -24,6 +24,7 @@ public final class StaticCollisionQuery {
         if (maxCandidates < 1 || maxChecks < 1) throw new IllegalArgumentException("Work limits must be positive");
         this.maxCandidates = maxCandidates; this.maxChecks = maxChecks;
     }
+    long worldRevision() { return world.mutationRevision(); }
 
     public static boolean solid(Material material) {
         return switch (Objects.requireNonNull(material)) {

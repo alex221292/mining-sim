@@ -1,5 +1,7 @@
 # M4.4b.2c — bounded adaptive collision stepping
 
+This document describes M4.4b.2c. The optional shared-timeline body interaction added later is documented in `m4-4b3-body-collisions.md`.
+
 Collision-aware `RigidBodySystem` uses four 1/240 s base substeps per 1/60 s tick by default. For each body, each base substep is split into microsteps. The maximum distance from its center of mass to any occupied cell corner is computed once in `FragmentGeometry`. With `v` in m/s, gravity `g = 9.81 m/s²`, interval `h`, radius `R` in cells and angular velocity `omega` in rad/s, the bound in cells is:
 
 `(|v| + g*h)*h/0.1 + R*|omega|*h`.

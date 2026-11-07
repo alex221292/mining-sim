@@ -78,6 +78,13 @@ tasks.register('boundedMotionBenchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+tasks.register('bodyCollisionBenchmark', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.BodyCollisionBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
 tasks.register('activityBenchmark', JavaExec) {
     group = 'verification'
     description = 'Compares full-grid and experimental activity traversal.'

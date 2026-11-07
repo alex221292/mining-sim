@@ -74,6 +74,34 @@ public final class StaticContactSolver {
         candidates += result.candidates(); checks += result.narrowPhaseChecks(); contacts += result.contacts().size();
         return result.contacts();
     }
+    final class Prepared {
+        private final RigidBody body;
+        private final List<Constraint> constraints = new ArrayList<>();
+        private Prepared(RigidBody body) {
+            this.body = body;
+            for (var c : query(body)) constraints.add(new Constraint(body, c, config));
+        }
+        void iterate() {
+            for (var constraint : constraints) constraint.solve(body, config);
+            if (!constraints.isEmpty()) iterations++;
+        }
+    }
+    Prepared prepare(RigidBody body) { return new Prepared(body); }
+    int velocityIterations() { return config.velocityIterations(); }
+    int positionIterations() { return config.positionIterations(); }
+    long worldRevision() { return query.worldRevision(); }
+    boolean supported(RigidBody body) {
+        for (var contact : query(body)) if (contact.normalY() > 0.5) return true;
+        return false;
+    }
+    void correctPosition(RigidBody body) {
+        var current = query(body);
+        StaticCollisionQuery.Contact deepest = null;
+        for (var c : current) if (deepest == null || c.penetrationCells() > deepest.penetrationCells()) deepest = c;
+        if (deepest == null || deepest.penetrationCells() <= config.slopCells()) return;
+        double correction = Math.min(0.2, config.correctionFactor() * (deepest.penetrationCells() - config.slopCells()));
+        body.translate(-deepest.normalX() * correction, -deepest.normalY() * correction);
+    }
     void solve(RigidBody body) {
         var constraints = new ArrayList<Constraint>();
         for (var c : query(body)) constraints.add(new Constraint(body, c, config));
