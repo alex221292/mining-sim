@@ -1,5 +1,7 @@
 # M4.4b.2b — static contact impulse solver
 
+Historical M4.4b.2b behavior and measurements are described below. Collision-aware stepping was subsequently updated in `m4-4b2c-bounded-motion.md`.
+
 This opt-in headless solver connects a `StaticCollisionQuery` to `RigidBodySystem`; the constructors without a solver retain free motion. World and fragment material ownership are unchanged. No Swing or cellular integration is provided. Normals point from the body toward the obstacle; positive contact normal velocity means approach and the impulse on the body points against the normal.
 
 Positions and contact points are in cells (0.1 m each), velocities in m/s, mass in kg, angular velocity in rad/s and inertia in kg·m². With lever arm `r = (contact - center) * 0.1` in metres, contact velocity is `(vx - omega*ry, vy + omega*rx)`. The normal effective inverse mass is `1/m + cross(r,n)^2/I`. A positive approach is opposed by an impulse along `-n`. Restitution defaults to 0.05 and is disabled at speeds at or below 0.5 m/s. Constraints accumulate normal impulses across eight deterministic velocity iterations, with the restitution target computed once. Tangential impulses use their own effective mass and accumulated Coulomb limits: static 0.7, dynamic 0.5 by default. Configurable coefficients and iteration counts are validated.

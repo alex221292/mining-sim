@@ -9,7 +9,7 @@ public final class FragmentGeometry {
     public record Point(double x, double y) { }
     public record Bounds(double minX, double minY, double maxX, double maxY) { }
     private final RockFragment fragment;
-    private final double localX, localY, massKg, inertiaKgMetresSquared;
+    private final double localX, localY, massKg, inertiaKgMetresSquared, maxRadiusCells;
 
     public FragmentGeometry(RockFragment fragment) {
         this.fragment = Objects.requireNonNull(fragment);
@@ -27,12 +27,18 @@ public final class FragmentGeometry {
         if (!Double.isFinite(massKg) || massKg <= 0 || !Double.isFinite(inertia) || inertia <= 0)
             throw new IllegalArgumentException("Invalid fragment mass or inertia");
         inertiaKgMetresSquared = inertia;
+        double radius = 0;
+        for (var cell : descriptor.cells()) for (int cy = 0; cy <= 1; cy++) for (int cx = 0; cx <= 1; cx++)
+            radius = Math.max(radius, Math.hypot(cell.x() + (double) cx - localX, cell.y() + (double) cy - localY));
+        if (!Double.isFinite(radius) || radius <= 0) throw new IllegalArgumentException("Invalid fragment radius");
+        maxRadiusCells = radius;
     }
 
     public double localCenterX() { return localX; }
     public double localCenterY() { return localY; }
     public double massKg() { return massKg; }
     public double inertiaKgMetresSquared() { return inertiaKgMetresSquared; }
+    public double maxRadiusCells() { return maxRadiusCells; }
     public Point initialCenter() { return new Point(fragment.originX() + localX, fragment.originY() + localY); }
 
     /** Positive angles rotate clockwise in the downward-positive world coordinate system. */
