@@ -27,6 +27,9 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import miningsim.app.SimulationControl;
 import miningsim.app.Camera2D;
 import miningsim.app.Brush;
+import miningsim.app.StructuralSimulationController;
+import miningsim.render.CrackOverlay;
+import miningsim.structural.RockReferenceScenes;
 import miningsim.render.Java2DRenderer;
 import miningsim.render.Renderer;
 import miningsim.persistence.WorldIO;
@@ -58,6 +61,10 @@ public final class Main {
         private int frames, ticks, fps, tps;
         private boolean left, right;
         private boolean panLeft, panRight, panUp, panDown;
+        private StructuralSimulationController structural;
+        private boolean diagnostics;
+        private int sceneIndex = -1;
+        private String sceneName = "";
 
         Sandbox() {
             setPreferredSize(new Dimension(800, 600));
@@ -65,6 +72,10 @@ public final class Main {
             MouseAdapter mouse = new MouseAdapter() {
                 @Override public void mousePressed(MouseEvent e) {
                     requestFocusInWindow();
+                    if (SwingUtilities.isMiddleMouseButton(e) && structural != null) {
+                        structural.select((int)Math.floor(camera.screenToWorldX(e.getX())), (int)Math.floor(camera.screenToWorldY(e.getY())));
+                        repaint(); return;
+                    }
                     if (SwingUtilities.isLeftMouseButton(e)) left = true;
                     if (SwingUtilities.isRightMouseButton(e)) right = true;
                     paintAt(e);
@@ -102,7 +113,9 @@ public final class Main {
                         case KeyEvent.VK_5 -> brush = Material.GRAVEL;
                         case KeyEvent.VK_6 -> brush = Material.SOIL;
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
-                        case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
+                        case KeyEvent.VK_N -> { if (control.singleStep()) { ticks++; if (structural != null) structural.tick(); } }
+                        case KeyEvent.VK_F3 -> diagnostics = !diagnostics;
+                        case KeyEvent.VK_F4 -> chooseReferenceScene();
                         case KeyEvent.VK_C -> world.clear();
                         case KeyEvent.VK_LEFT -> panLeft = true;
                         case KeyEvent.VK_RIGHT -> panRight = true;
@@ -148,6 +161,7 @@ public final class Main {
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
                     world = loaded; control = nextControl; renderer = nextRenderer;
+                    structural = null; sceneIndex = -1; sceneName = "";
                     camera.reset();
                 }
             } catch (IOException e) {
@@ -156,6 +170,29 @@ public final class Main {
                 previous = System.nanoTime(); accumulator = 0;
                 timer.start(); requestFocusInWindow(); repaint();
             }
+        }
+
+        private void chooseReferenceScene() {
+            timer.stop();
+            try {
+                if (JOptionPane.showConfirmDialog(this, "Replace current world with a reference scene? Unsaved work will be lost.",
+                        "Reference scene", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
+                int next = (sceneIndex + 1) % 5;
+                var scene = switch (next) {
+                    case 0 -> RockReferenceScenes.roof("short",4,1);
+                    case 1 -> RockReferenceScenes.roof("long",12,1);
+                    case 2 -> RockReferenceScenes.roof("thick",12,2);
+                    case 3 -> RockReferenceScenes.cantilever(8);
+                    default -> RockReferenceScenes.island();
+                };
+                boolean paused = control.paused();
+                world = scene.world(); structural = new StructuralSimulationController(scene);
+                control = new SimulationControl(new Simulation(world,12345));
+                if (paused) control.togglePause();
+                renderer = new Java2DRenderer(world.width(),world.height()); sceneIndex = next; sceneName = scene.name();
+                camera.reset(); camera.zoomAt(Camera2D.MAX_ZOOM,0,0);
+                camera.pan(-Math.max(0,(getWidth()/camera.zoom()-world.width())/2), -Math.max(0,(getHeight()/camera.zoom()-world.height())/2));
+            } finally { previous=System.nanoTime(); accumulator=0; timer.start(); requestFocusInWindow(); repaint(); }
         }
 
         private void paintAt(MouseEvent e) {
@@ -173,7 +210,7 @@ public final class Main {
             previous = now;
             if (control.paused()) accumulator = 0;
             while (accumulator >= TICK) {
-                if (control.tick()) ticks++;
+                if (control.tick()) { ticks++; if (structural != null) structural.tick(); }
                 accumulator -= TICK;
             }
             if (now - statsStart >= 1_000_000_000L) {
@@ -188,9 +225,10 @@ public final class Main {
             super.paintComponent(graphics);
             Graphics2D g = (Graphics2D) graphics.create();
             renderer.render(g, world, camera, getWidth(), getHeight());
+            if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 720), 94);
+            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 128 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
@@ -199,6 +237,15 @@ public final class Main {
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
             g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
+            g.drawString("F3: diagnostics | F4: replace with test scene | Middle click: select stone",8,101);
+            if (diagnostics) {
+                if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
+                else {
+                    var v = structural.view(); long broken = v.marks().stream().filter(StructuralSimulationController.Mark::broken).count();
+                    g.drawString(String.format(Locale.ROOT,"%s: %s | component %d (%d cells) | U %.2f damage %.2f | broken %d | tick %d | selected only",
+                            sceneName,v.status(),v.componentId(),v.cells(),v.utilization(),v.damage(),broken,v.ticks()),8,118);
+                }
+            }
             g.dispose();
             frames++;
         }

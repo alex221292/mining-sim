@@ -137,6 +137,8 @@ M3.4 adds bounded world-only versioned MSIM save/load with CRC32 and desktop con
 
 M4.0 is design only: the confirmed structural physics and construction decisions, proposed ownership, M4.1–M4.10 roadmap and reference scenes are in `docs/m4-structural-design.md`. Connectivity alone is not a stress solver. Numerical strengths and several implementation choices remain uncalibrated; no M4 physics or construction is implemented by M4.0. Do **not** claim physical realism without validation.
 
+M4.3c connects the small selected-component rock reference scenes to Swing diagnostics; limitations and controls are in `docs/m4-3c-swing.md`. Rock fragments do not move.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.

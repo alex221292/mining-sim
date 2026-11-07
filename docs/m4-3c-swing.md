@@ -1,0 +1,20 @@
+# M4.3c — Swing reference diagnostics
+
+F4 confirms replacement of the current world (unsaved work is lost) and cycles short roof, long roof, thick roof, cantilever and island. The exact `RockReferenceScenes` world, connectivity, damage system and gameplay profile are reused; no second sink is attached. The scene starts a fresh structural tick sequence and preserves the prior pause state. Camera resets to maximum zoom centered on the scene. F3 toggles diagnostic display, not structural simulation. Middle-click a stone cell to select its component; only the selected component is analyzed. Ordinary worlds have structural mode disabled; F4 is the explicit small-scene mode. Analyzed world size is capped at 4096 cells, connectivity work at 4096 logical units/tick, and the underlying solver at 64 nodes. HUD reports status, selected component, size, peak utilization/damage, broken marks and logical ticks; it does not claim other components are stable.
+
+Each unpaused tick or paused N single-step first advances ordinary falling-sand physics, then the structural coordinator advances bounded connectivity, analyzes the selected component if its revision/selection changed, and submits at most one damage tick. Inputs occur on the EDT before subsequent ticks. Pending work skips damage without retroactive catch-up. A break invalidates the solve; on a later tick connectivity is rebuilt and the selected cell's new component is analyzed. Select other split components with middle click. Repainting, F3, camera changes and pause never advance structural time. Reference scenes contain only static stone/bedrock, so ordinary falling-sand ticks do not change their calibrated geometry. Painting or erasing invalidates topology; incarnation checks prevent replaced stone inheriting old damage. A removed selected cell reports NO SELECTION until another is selected. Structural state is not persisted in MSIM v1.
+
+Overlay projects actual cell interfaces through `Camera2D`: yellow indicates partial damage, red severe damage (>=0.6), black broken bond. It skips zoom below 2 pixels/cell. Broken marks come from authoritative connectivity, including across split components; cells remain present. Graphics clipping is provided by Swing. No forces are calculated in `paintComponent`. A snapshot may be unavailable while pending or after edits; no stale damage is displayed.
+
+## Manual acceptance
+
+1. Run `gradlew.bat run`, press F4 and confirm short scene. Press F3; let at least 600 structural ticks pass and check no cracks.
+2. Press F4 and confirm long scene. Space pauses, N advances one tick; observe damage increase and Space resumes. First break is expected at logical tick ID 36 under equivalent unedited conditions.
+3. Check HUD status, selected-only coverage and black broken line; middle-click different stone components to inspect them. Choose stone with 3 and paint, or right-click to erase a support: status becomes pending and then recomputes or reports unsupported. Pan using arrows and zoom with wheel to check alignment.
+4. F4 cycles through thick roof, cantilever and unsupported island. Loading preserves pause. Broken bonds do not move rock; dynamics belong to M4.4.
+
+## Verification and performance
+
+`gradlew.bat test build` passes; headless controller tests cover calibration break, 600 ticks, selection, invalidation, island and camera-projected boundary geometry. Swing interaction was not manually verified in this environment.
+
+`gradlew.bat structuralUiBenchmark`, Windows 11 / Java 25, one exploratory headless run: empty 400×300 ordinary simulation 0.2616 ms/tick; reference updates 0.1084 ms/tick; edit plus connectivity/reanalysis 0.2598 ms, including assembly 0.1496 and solve 0.0359 ms. Buffered-image 800×600 repaint without/with overlay at zoom 2: 0.1153/0.1155 ms; zoom 8: 0.1092/0.1108; zoom 16: 0.1163/0.1189. These tiny-fixture, un-warmed measurements do not establish EDT responsiveness or large-world performance; GUI timing and accessibility require manual verification.
