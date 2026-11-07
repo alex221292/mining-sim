@@ -7,6 +7,11 @@ import miningsim.fragment.FragmentRegistry;
 
 /** Headless fixed-step motion, optionally with discrete static collisions. */
 public final class RigidBodySystem {
+    enum Checkpoint { AFTER_SYNC, AFTER_WAKE, DURING_WAKE_PROPAGATION, AFTER_STATIC_PREPARE, AFTER_PAIR_QUERY,
+                      AFTER_VELOCITY, AFTER_POSITION, BEFORE_SUPPORT, DURING_SUPPORT_EVALUATION, AFTER_PUBLICATION }
+    private java.util.function.Consumer<Checkpoint> testCheckpoint;
+    void setTestCheckpoint(java.util.function.Consumer<Checkpoint> checkpoint) { testCheckpoint = checkpoint; }
+    private void checkpoint(Checkpoint point) { if (testCheckpoint != null) testCheckpoint.accept(point); }
     public record MotionConfig(double maxTravelCells, int maxMicrostepsPerBody, int maxTotalMicrosteps) {
         public MotionConfig {
             if (!Double.isFinite(maxTravelCells) || maxTravelCells <= 0 || maxTravelCells > 0.25
@@ -125,18 +130,26 @@ public final class RigidBodySystem {
     /** Explicit tick, independent of wall time and rendering. */
     public void step() {
         var original = new TreeMap<>(bodies);
-        var states = new TreeMap<Long, RigidBody.State>();
-        for (var entry : bodies.entrySet()) states.put(entry.getKey(), entry.getValue().state());
+        var states = new java.util.ArrayList<RigidBody.State>(original.size());
+        for (var body : original.values()) states.add(body.state());
         var oldDiagnostics = diagnostics;
+        var oldMotionDiagnostics = motionDiagnostics;
+        var oldInteractionDiagnostics = interactionDiagnostics;
+        long oldWorldRevision = observedWorldRevision;
+        var oldSuccessfulBodyIds = lastSuccessfulBodyIds;
+        var oldSolverCounters = solver == null ? null : solver.counterState();
         try {
             synchronize();
+            checkpoint(Checkpoint.AFTER_SYNC);
             if (solver != null) solver.resetDiagnostics();
             if (bodyQuery != null) {
                 interactionWork = new InteractionWork();
                 if (!bodies.keySet().containsAll(lastSuccessfulBodyIds) || solver != null && observedWorldRevision >= 0 && observedWorldRevision != solver.worldRevision()) wakeAll();
+                checkpoint(Checkpoint.AFTER_WAKE);
                 sharedStep();
                 if (solver != null) observedWorldRevision = solver.worldRevision();
                 lastSuccessfulBodyIds = java.util.Set.copyOf(bodies.keySet());
+                checkpoint(Checkpoint.AFTER_PUBLICATION);
                 lastFailure = null;
                 return;
             }
@@ -164,7 +177,7 @@ public final class RigidBodySystem {
                     maxAngle = Math.max(maxAngle, Math.abs(body.angleRadians() - angle));
                     if (solver != null) solver.solve(body);
                     maxPointTravel = Math.max(maxPointTravel, predicted);
-                    executed++; used++; perBody.put(body.id(), used); maxPerBody = Math.max(maxPerBody, used);
+                    executed = Math.incrementExact(executed); used = Math.incrementExact(used); perBody.put(body.id(), used); maxPerBody = Math.max(maxPerBody, used);
                     remaining = required == 1 ? 0 : remaining - interval;
                 } while (remaining > 0);
             }
@@ -173,10 +186,18 @@ public final class RigidBodySystem {
             lastFailure = null;
         } catch (RuntimeException ex) {
             bodies.clear(); bodies.putAll(original);
-            for (var entry : states.entrySet()) bodies.get(entry.getKey()).restore(entry.getValue());
+            int index = 0;
+            for (var body : original.values()) body.restore(states.get(index++));
             diagnostics = oldDiagnostics;
+            motionDiagnostics = oldMotionDiagnostics;
+            interactionDiagnostics = oldInteractionDiagnostics;
+            observedWorldRevision = oldWorldRevision;
+            lastSuccessfulBodyIds = oldSuccessfulBodyIds;
+            if (solver != null) solver.restoreCounters(oldSolverCounters);
             lastFailure = ex.getClass().getSimpleName() + ": " + ex.getMessage();
             throw ex;
+        } finally {
+            interactionWork = null;
         }
     }
 
@@ -209,7 +230,9 @@ public final class RigidBodySystem {
                 }
                 var staticConstraints = new java.util.ArrayList<StaticContactSolver.Prepared>();
                 if (solver != null) for (var body : bodies.values()) if (!body.sleeping()) staticConstraints.add(solver.prepare(body));
+                checkpoint(Checkpoint.AFTER_STATIC_PREPARE);
                 var dynamicContacts = queryBodies();
+                checkpoint(Checkpoint.AFTER_PAIR_QUERY);
                 if (dynamicContacts.stream().anyMatch(c -> bodies.get(c.bodyA()).sleeping() != bodies.get(c.bodyB()).sleeping()))
                     throw new IllegalStateException("Sleeping body reached without pre-integration wake");
                 var activeContacts = dynamicContacts.stream().filter(c -> !bodies.get(c.bodyA()).sleeping() || !bodies.get(c.bodyB()).sleeping()).toList();
@@ -218,8 +241,9 @@ public final class RigidBodySystem {
                 for (int pass = 0; pass < iterations; pass++) {
                     if (solver != null && pass < solver.velocityIterations()) for (var constraint : staticConstraints) constraint.iterate();
                     if (pass < bodySolver.iterations()) dynamicConstraints.iterate();
-                    if (pass < bodySolver.iterations() && !activeContacts.isEmpty()) interactionWork.iterations++;
+                    if (pass < bodySolver.iterations() && !activeContacts.isEmpty()) interactionWork.iterations = Math.incrementExact(interactionWork.iterations);
                 }
+                checkpoint(Checkpoint.AFTER_VELOCITY);
                 for (int pass = 0; pass < interactionConfig.positionIterations(); pass++) {
                     if (solver != null && pass < solver.positionIterations()) for (var body : bodies.values()) if (!body.sleeping()) solver.correctPosition(body);
                     var contacts = queryBodies();
@@ -233,14 +257,20 @@ public final class RigidBodySystem {
                         b.translate(contact.normalX() * correction * invB / (invA + invB), contact.normalY() * correction * invB / (invA + invB));
                     }
                 }
-                shared++; work += awake; remaining = required == 1 ? 0 : remaining - interval;
+                checkpoint(Checkpoint.AFTER_POSITION);
+                shared = Math.incrementExact(shared); work = Math.addExact(work, awake); remaining = required == 1 ? 0 : remaining - interval;
             } while (remaining > 0);
         }
+        checkpoint(Checkpoint.BEFORE_SUPPORT);
         var supported = new java.util.HashSet<Long>();
-        if (solver != null) for (var body : bodies.values()) if (solver.supported(body)) supported.add(body.id());
+        if (solver != null) for (var body : bodies.values()) {
+            if (solver.supported(body)) supported.add(body.id());
+            checkpoint(Checkpoint.DURING_SUPPORT_EVALUATION);
+        }
         var contacts = queryBodies();
         for (int pass = 0; pass < bodies.size(); pass++) for (var c : contacts) {
-            if (++interactionWork.wakeWork > interactionConfig.maxWakeWork()) throw new MotionBudgetException("Support propagation limit exceeded: " + interactionWork.wakeWork);
+            interactionWork.wakeWork = Math.incrementExact(interactionWork.wakeWork);
+            if (interactionWork.wakeWork > interactionConfig.maxWakeWork()) throw new MotionBudgetException("Support propagation limit exceeded: " + interactionWork.wakeWork);
             if (c.normalY() > 0.5 && supported.contains(c.bodyB())) supported.add(c.bodyA());
             if (c.normalY() < -0.5 && supported.contains(c.bodyA())) supported.add(c.bodyB());
         }
@@ -253,7 +283,8 @@ public final class RigidBodySystem {
     }
     private void wakeAll() {
         for (var body : bodies.values()) {
-            if (++interactionWork.wakeWork > interactionConfig.maxWakeWork()) throw new MotionBudgetException("Wake limit exceeded: " + interactionWork.wakeWork);
+            interactionWork.wakeWork = Math.incrementExact(interactionWork.wakeWork);
+            if (interactionWork.wakeWork > interactionConfig.maxWakeWork()) throw new MotionBudgetException("Wake limit exceeded: " + interactionWork.wakeWork);
             if (body.sleeping()) { body.wake(); interactionWork.woken++; }
         }
     }
@@ -265,7 +296,9 @@ public final class RigidBodySystem {
             var a = source.geometry().bounds(source.xCells(),source.yCells(),source.angleRadians());
             double margin = travelBound(source, remaining) + 0.1;
             for (var other : bodies.values()) {
-                if (++interactionWork.wakeWork > interactionConfig.maxWakeWork()) throw new MotionBudgetException("Wake propagation limit exceeded: " + interactionWork.wakeWork);
+                interactionWork.wakeWork = Math.incrementExact(interactionWork.wakeWork);
+                if (interactionWork.wakeWork > interactionConfig.maxWakeWork()) throw new MotionBudgetException("Wake propagation limit exceeded: " + interactionWork.wakeWork);
+                checkpoint(Checkpoint.DURING_WAKE_PROPAGATION);
                 if (!other.sleeping()) continue;
                 var b = other.geometry().bounds(other.xCells(),other.yCells(),other.angleRadians());
                 if (a.minX() - margin <= b.maxX() && a.maxX() + margin >= b.minX()
@@ -277,8 +310,11 @@ public final class RigidBodySystem {
     }
     private List<BodyCollisionQuery.Contact> queryBodies() {
         var r = bodyQuery.query(bodies());
-        interactionWork.pairs += r.candidatePairs(); interactionWork.overlapping += r.overlappingPairs();
-        interactionWork.checks += r.narrowChecks(); interactionWork.raw += r.rawContacts(); interactionWork.reduced += r.contacts().size();
+        interactionWork.pairs = Math.addExact(interactionWork.pairs, r.candidatePairs());
+        interactionWork.overlapping = Math.addExact(interactionWork.overlapping, r.overlappingPairs());
+        interactionWork.checks = Math.addExact(interactionWork.checks, r.narrowChecks());
+        interactionWork.raw = Math.addExact(interactionWork.raw, r.rawContacts());
+        interactionWork.reduced = Math.addExact(interactionWork.reduced, r.contacts().size());
         if (interactionWork.pairs > interactionConfig.maxPairs() || interactionWork.checks > interactionConfig.maxChecks()
                 || interactionWork.raw > interactionConfig.maxRawContacts() || interactionWork.reduced > interactionConfig.maxReducedContacts())
             throw new MotionBudgetException("Body contact tick budget exceeded: pairs=" + interactionWork.pairs + ", checks=" + interactionWork.checks

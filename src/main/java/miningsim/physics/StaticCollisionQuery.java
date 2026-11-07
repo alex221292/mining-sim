@@ -49,7 +49,8 @@ public final class StaticCollisionQuery {
             if (!solid(world.get(x, y))) continue;
             var fixed = new SquareCollision.Square(x + 0.5, y + 0.5, 0);
             for (var cell : body.fragment().descriptor().cells()) {
-                if (++checks > maxChecks) throw new IllegalStateException("Static collision narrow-phase limit exceeded");
+                checks = Math.incrementExact(checks);
+                if (checks > maxChecks) throw new IllegalStateException("Static collision narrow-phase limit exceeded");
                 var center = body.geometry().transform(cell.x() + 0.5, cell.y() + 0.5,
                         body.xCells(), body.yCells(), body.angleRadians());
                 var hit = SquareCollision.intersect(new SquareCollision.Square(center.x(), center.y(), body.angleRadians()), fixed);
@@ -73,7 +74,8 @@ public final class StaticCollisionQuery {
         }
         for (var cell : body.fragment().descriptor().cells()) {
             for (int dy = 0; dy <= 1; dy++) for (int dx = 0; dx <= 1; dx++) {
-                if (++checks > maxChecks) throw new IllegalStateException("Static collision narrow-phase limit exceeded");
+                checks = Math.incrementExact(checks);
+                if (checks > maxChecks) throw new IllegalStateException("Static collision narrow-phase limit exceeded");
                 var p = body.geometry().transform(cell.x() + (double) dx, cell.y() + (double) dy,
                         body.xCells(), body.yCells(), body.angleRadians());
                 addBoundary(contacts, body.id(), cell, Boundary.LEFT, -1, 0, -p.x(), 0, p.y());

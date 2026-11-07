@@ -29,21 +29,24 @@ public final class BodyCollisionQuery {
             if (bodies.get(i - 1).id() == bodies.get(i).id()) throw new IllegalArgumentException("Duplicate body ID");
         var result = new ArrayList<Contact>(); long pairs = 0, overlapping = 0, checks = 0, rawCount = 0;
         for (int i = 0; i < bodies.size(); i++) for (int j = i + 1; j < bodies.size(); j++) {
-            if (++pairs > limits.pairs()) throw new IllegalStateException("Body candidate-pair limit exceeded: " + pairs + " > " + limits.pairs());
+            pairs = Math.incrementExact(pairs);
+            if (pairs > limits.pairs()) throw new IllegalStateException("Body candidate-pair limit exceeded: " + pairs + " > " + limits.pairs());
             var a = bodies.get(i); var b = bodies.get(j);
             var ab = a.geometry().bounds(a.xCells(), a.yCells(), a.angleRadians());
             var bb = b.geometry().bounds(b.xCells(), b.yCells(), b.angleRadians());
             if (ab.maxX() <= bb.minX() || bb.maxX() <= ab.minX() || ab.maxY() <= bb.minY() || bb.maxY() <= ab.minY()) continue;
-            overlapping++;
+            overlapping = Math.incrementExact(overlapping);
             var pairContacts = new ArrayList<Contact>();
             for (var ca : a.fragment().descriptor().cells()) for (var cb : b.fragment().descriptor().cells()) {
-                if (++checks > limits.checks()) throw new IllegalStateException("Body narrow-phase limit exceeded: " + checks + " > " + limits.checks());
+                checks = Math.incrementExact(checks);
+                if (checks > limits.checks()) throw new IllegalStateException("Body narrow-phase limit exceeded: " + checks + " > " + limits.checks());
                 var pa = a.geometry().transform(ca.x() + 0.5, ca.y() + 0.5, a.xCells(), a.yCells(), a.angleRadians());
                 var pb = b.geometry().transform(cb.x() + 0.5, cb.y() + 0.5, b.xCells(), b.yCells(), b.angleRadians());
                 var hit = SquareCollision.intersect(new SquareCollision.Square(pa.x(), pa.y(), a.angleRadians()),
                         new SquareCollision.Square(pb.x(), pb.y(), b.angleRadians()));
                 if (hit == null) continue;
-                if (++rawCount > limits.rawContacts()) throw new IllegalStateException("Body raw-contact limit exceeded: " + rawCount + " > " + limits.rawContacts());
+                rawCount = Math.incrementExact(rawCount);
+                if (rawCount > limits.rawContacts()) throw new IllegalStateException("Body raw-contact limit exceeded: " + rawCount + " > " + limits.rawContacts());
                 pairContacts.add(new Contact(a.id(), b.id(), hit.normalX(), hit.normalY(), hit.penetrationCells(), hit.pointX(), hit.pointY()));
             }
             // Deterministically group similar normals and keep tangent extremes, not AABB geometry.

@@ -64,14 +64,20 @@ public final class StaticContactSolver {
     private final StaticCollisionQuery query;
     private final Config config;
     private long candidates, checks, contacts, iterations;
+    record CounterState(long candidates, long checks, long contacts, long iterations) { }
     public StaticContactSolver(StaticCollisionQuery query, Config config) {
         this.query = Objects.requireNonNull(query); this.config = Objects.requireNonNull(config);
     }
     void resetDiagnostics() { candidates = checks = contacts = iterations = 0; }
+    CounterState counterState() { return new CounterState(candidates, checks, contacts, iterations); }
+    void restoreCounters(CounterState state) {
+        candidates = state.candidates(); checks = state.checks(); contacts = state.contacts(); iterations = state.iterations();
+    }
     Diagnostics diagnostics(double maxDisplacement, double maxAngle) { return new Diagnostics(candidates, checks, contacts, iterations, maxDisplacement, maxAngle); }
     private List<StaticCollisionQuery.Contact> query(RigidBody body) {
         var result = query.query(body);
-        candidates += result.candidates(); checks += result.narrowPhaseChecks(); contacts += result.contacts().size();
+        candidates = Math.addExact(candidates, result.candidates()); checks = Math.addExact(checks, result.narrowPhaseChecks());
+        contacts = Math.addExact(contacts, result.contacts().size());
         return result.contacts();
     }
     final class Prepared {
@@ -83,7 +89,7 @@ public final class StaticContactSolver {
         }
         void iterate() {
             for (var constraint : constraints) constraint.solve(body, config);
-            if (!constraints.isEmpty()) iterations++;
+            if (!constraints.isEmpty()) iterations = Math.addExact(iterations, 1);
         }
     }
     Prepared prepare(RigidBody body) { return new Prepared(body); }
@@ -107,7 +113,7 @@ public final class StaticContactSolver {
         for (var c : query(body)) constraints.add(new Constraint(body, c, config));
         for (int i = 0; i < config.velocityIterations(); i++) {
             for (var constraint : constraints) constraint.solve(body, config);
-            if (!constraints.isEmpty()) iterations++;
+            if (!constraints.isEmpty()) iterations = Math.addExact(iterations, 1);
         }
         for (int i = 0; i < config.positionIterations(); i++) {
             var current = query(body);
