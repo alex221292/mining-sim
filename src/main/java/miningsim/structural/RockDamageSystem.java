@@ -13,7 +13,7 @@ public final class RockDamageSystem {
     public record Bond(int key, long incarnation, int x1, int y1, int x2, int y2,
                        double axial1, double shear1, double moment1, double axial2, double shear2, double moment2,
                        double utilization, double damage, double rate) { }
-    public record Snapshot(long revision, int componentId, int nodeCount, List<Bond> bonds) {
+    public record Snapshot(long revision, int componentId, int nodeCount, double maxDisplacementMetres, List<Bond> bonds) {
         public Snapshot { bonds = List.copyOf(bonds); }
     }
     private record Damage(long incarnation, int x1, int y1, int x2, int y2, double value) { }
@@ -116,7 +116,10 @@ public final class RockDamageSystem {
             }
         } catch (IllegalArgumentException ex) { return fail(Status.NON_CONVERGED); }
         if (connectivity.revision() != revision || connectivity.pending()) return fail(Status.PENDING);
-        snapshot = new Snapshot(revision,id,cells.size(),output); return status = Status.CONVERGED;
+        double maxDisplacement = 0;
+        for (int i = 0; i < cells.size(); i++)
+            maxDisplacement = Math.max(maxDisplacement, Math.hypot(result.displacements()[3*i], result.displacements()[3*i+1]));
+        snapshot = new Snapshot(revision,id,cells.size(),maxDisplacement,output); return status = Status.CONVERGED;
     }
     private boolean touchesBedrock(int x, int y) {
         return (x > 0 && world.get(x-1,y) == Material.BEDROCK) || (x+1 < world.width() && world.get(x+1,y) == Material.BEDROCK)
@@ -138,7 +141,7 @@ public final class RockDamageSystem {
             }
             next.add(new Bond(b.key(),b.incarnation(),b.x1(),b.y1(),b.x2(),b.y2(),b.axial1(),b.shear1(),b.moment1(),b.axial2(),b.shear2(),b.moment2(),b.utilization(),value,b.rate()));
         }
-        snapshot = new Snapshot(previous.revision(),previous.componentId(),previous.nodeCount(),next);
+        snapshot = new Snapshot(previous.revision(),previous.componentId(),previous.nodeCount(),previous.maxDisplacementMetres(),next);
         return status;
     }
 }

@@ -43,6 +43,13 @@ tasks.register('rockDamageBenchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+tasks.register('rockReferenceScenes', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.RockReferenceRunner'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
 tasks.register('activityBenchmark', JavaExec) {
     group = 'verification'
     description = 'Compares full-grid and experimental activity traversal.'
