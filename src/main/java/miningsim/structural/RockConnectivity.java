@@ -7,15 +7,21 @@ import miningsim.world.World;
 
 /** Single-threaded, explicitly advanced topological reference; not a stability solver. */
 public final class RockConnectivity implements World.ChangeSink {
+    public enum BondState { ABSENT, INTACT, BROKEN }
+    @FunctionalInterface public interface BondVisitor {
+        void visit(int x1, int y1, int x2, int y2, BondState state);
+    }
     private final World world;
     private final int width, height, cells;
     // Two canonical bits per cell: bond to right, bond below.
     private BitSet broken = new BitSet();
     private final int[] seen, labels, queue, componentIds, sizes;
     private final boolean[] foundations;
+    private final long[] cellIncarnations;
     private int generation, scan, head, tail, currentId, count;
     private boolean pending = true, running;
-    private long revision, restarts, totalWork;
+    private long revision, restarts, totalWork, invalidationRevision;
+    private boolean revisionExhausted;
 
     public RockConnectivity(World world) {
         this.world = Objects.requireNonNull(world);
@@ -24,15 +30,19 @@ public final class RockConnectivity implements World.ChangeSink {
         if (cells > Integer.MAX_VALUE / 2) throw new IllegalArgumentException("World too large for bond indices");
         seen = new int[cells]; labels = new int[cells]; queue = new int[cells];
         componentIds = new int[cells]; sizes = new int[cells]; foundations = new boolean[cells];
+        cellIncarnations = new long[cells];
         world.setChangeSink(this);
     }
 
     private void attached() {
         if (!world.hasChangeSink(this)) throw new IllegalStateException("Structural change sink was detached or replaced");
+        if (revisionExhausted) throw new IllegalStateException("Topology revision exhausted; create a new connectivity instance");
     }
     private void dirty() {
         if (running) { restarts++; running = false; }
-        pending = true; revision++;
+        pending = true;
+        if (revision == Long.MAX_VALUE) revisionExhausted = true;
+        else revision++;
     }
     @Override public void changed(int x, int y, byte previous, byte next) {
         if ((previous == Material.STONE.id()) == (next == Material.STONE.id())) return;
@@ -41,8 +51,9 @@ public final class RockConnectivity implements World.ChangeSink {
         if (x > 0) broken.clear((i - 1) * 2);
         if (y > 0) broken.clear((i - width) * 2 + 1);
         dirty();
+        cellIncarnations[i] = revision;
     }
-    @Override public void invalidated() { broken = new BitSet(); dirty(); }
+    @Override public void invalidated() { broken = new BitSet(); dirty(); invalidationRevision = revision; }
 
     /** Canonical bit index for orthogonally adjacent in-bounds cells. */
     public int bondKey(int x1, int y1, int x2, int y2) {
@@ -50,6 +61,40 @@ public final class RockConnectivity implements World.ChangeSink {
         if (Math.abs(x1 - x2) + Math.abs(y1 - y2) != 1) throw new IllegalArgumentException("Cells must be orthogonal neighbors");
         int a = y1 * width + x1, b = y2 * width + x2;
         return Math.min(a, b) * 2 + (y1 == y2 ? 0 : 1);
+    }
+    /** Live physical state, available even while component analysis is pending. */
+    public BondState bondState(int x1, int y1, int x2, int y2) {
+        attached();
+        int key = bondKey(x1, y1, x2, y2);
+        if (world.get(x1, y1) != Material.STONE || world.get(x2, y2) != Material.STONE) return BondState.ABSENT;
+        return broken.get(key) ? BondState.BROKEN : BondState.INTACT;
+    }
+    /** Incarnation of the current pair of endpoints, unchanged by breaking the bond. */
+    public long bondIncarnation(int x1, int y1, int x2, int y2) {
+        if (bondState(x1, y1, x2, y2) == BondState.ABSENT) throw new IllegalStateException("Bond has no stone endpoints");
+        return Math.max(invalidationRevision, Math.max(cellIncarnations[y1 * width + x1], cellIncarnations[y2 * width + x2]));
+    }
+    /** Visits bonds with both endpoints in the half-open rectangle, in row-major, right-then-down order.
+     * Visitor must not mutate the world or topology; on mutation the caller must discard all observations. */
+    public void forEachBond(int left, int top, int right, int bottom, BondVisitor visitor) {
+        attached(); Objects.requireNonNull(visitor);
+        if (left < 0 || top < 0 || right < left || bottom < top || right > width || bottom > height)
+            throw new IndexOutOfBoundsException("Invalid bond rectangle");
+        long expected = revision;
+        for (int y = top; y < bottom; y++) for (int x = left; x < right; x++) {
+            if (world.get(x, y) != Material.STONE) continue;
+            if (x + 1 < right) visitBond(x, y, x + 1, y, visitor, expected);
+            if (y + 1 < bottom) visitBond(x, y, x, y + 1, visitor, expected);
+        }
+        attached();
+    }
+    private void visitBond(int x1, int y1, int x2, int y2, BondVisitor visitor, long expected) {
+        BondState state = bondState(x1, y1, x2, y2);
+        if (state != BondState.ABSENT) {
+            visitor.visit(x1, y1, x2, y2, state);
+            attached();
+            if (revision != expected) throw new IllegalStateException("Topology changed during bond traversal");
+        }
     }
     /** Break an existing intact stone bond; returns false if already broken. */
     public boolean breakBond(int x1, int y1, int x2, int y2) {
