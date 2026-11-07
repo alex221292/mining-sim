@@ -52,8 +52,21 @@ public final class StaticCollisionQuery {
                 var center = body.geometry().transform(cell.x() + 0.5, cell.y() + 0.5,
                         body.xCells(), body.yCells(), body.angleRadians());
                 var hit = SquareCollision.intersect(new SquareCollision.Square(center.x(), center.y(), body.angleRadians()), fixed);
-                if (hit != null) contacts.add(new Contact(body.id(), cell, x, y,
-                        hit.normalX(), hit.normalY(), hit.penetrationCells(), hit.pointX(), hit.pointY(), Boundary.NONE));
+                if (hit != null) {
+                    double nx = hit.normalX(), ny = hit.normalY(), depth = hit.penetrationCells();
+                    // A shared tile edge inside a horizontal solid run is not an exposed wall.
+                    // Use the outer top face when the body approaches that face from above.
+                    boolean leftSolid = x > 0 && solid(world.get(x - 1, y));
+                    boolean rightSolid = x + 1 < world.width() && solid(world.get(x + 1, y));
+                    boolean run = leftSolid || rightSolid;
+                    boolean exposedTop = y == 0 || !solid(world.get(x, y - 1));
+                    boolean internalSide = nx > 0 && leftSolid || nx < 0 && rightSolid;
+                    if (run && exposedTop && center.y() < y && (ny > 0.5 || internalSide)) {
+                        nx = 0; ny = 1;
+                        depth = center.y() + 0.5 * (Math.abs(Math.cos(body.angleRadians())) + Math.abs(Math.sin(body.angleRadians()))) - y;
+                    }
+                    contacts.add(new Contact(body.id(), cell, x, y, nx, ny, depth, hit.pointX(), hit.pointY(), Boundary.NONE));
+                }
                 if (contacts.size() > 1000) throw new IllegalStateException("Static contact reduction limit exceeded");
             }
         }
