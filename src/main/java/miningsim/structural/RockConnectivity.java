@@ -22,6 +22,7 @@ public final class RockConnectivity implements World.ChangeSink {
     private boolean pending = true, running;
     private long revision, restarts, totalWork, invalidationRevision;
     private boolean revisionExhausted;
+    private int traversalDepth;
 
     public RockConnectivity(World world) {
         this.world = Objects.requireNonNull(world);
@@ -53,6 +54,21 @@ public final class RockConnectivity implements World.ChangeSink {
         dirty();
         cellIncarnations[i] = revision;
     }
+    @Override public void changedBatch(java.util.List<World.CellChange> changes) {
+        boolean rockChanged = false;
+        for (var c : changes) if ((c.expected() == Material.STONE) != (c.replacement() == Material.STONE)) { rockChanged = true; break; }
+        if (!rockChanged) return;
+        dirty();
+        for (var c : changes) {
+            if ((c.expected() == Material.STONE) == (c.replacement() == Material.STONE)) continue;
+            int i = c.y() * width + c.x();
+            broken.clear(i * 2); broken.clear(i * 2 + 1);
+            if (c.x() > 0) broken.clear((i - 1) * 2);
+            if (c.y() > 0) broken.clear((i - width) * 2 + 1);
+            cellIncarnations[i] = revision;
+        }
+    }
+    @Override public boolean allowBatch() { return traversalDepth == 0; }
     @Override public void invalidated() { broken = new BitSet(); dirty(); invalidationRevision = revision; }
 
     /** Canonical bit index for orthogonally adjacent in-bounds cells. */
@@ -81,12 +97,15 @@ public final class RockConnectivity implements World.ChangeSink {
         if (left < 0 || top < 0 || right < left || bottom < top || right > width || bottom > height)
             throw new IndexOutOfBoundsException("Invalid bond rectangle");
         long expected = revision;
-        for (int y = top; y < bottom; y++) for (int x = left; x < right; x++) {
-            if (world.get(x, y) != Material.STONE) continue;
-            if (x + 1 < right) visitBond(x, y, x + 1, y, visitor, expected);
-            if (y + 1 < bottom) visitBond(x, y, x, y + 1, visitor, expected);
-        }
-        attached();
+        traversalDepth++;
+        try {
+            for (int y = top; y < bottom; y++) for (int x = left; x < right; x++) {
+                if (world.get(x, y) != Material.STONE) continue;
+                if (x + 1 < right) visitBond(x, y, x + 1, y, visitor, expected);
+                if (y + 1 < bottom) visitBond(x, y, x, y + 1, visitor, expected);
+            }
+            attached();
+        } finally { traversalDepth--; }
     }
     private void visitBond(int x1, int y1, int x2, int y2, BondVisitor visitor, long expected) {
         BondState state = bondState(x1, y1, x2, y2);
@@ -107,6 +126,7 @@ public final class RockConnectivity implements World.ChangeSink {
     }
     public boolean pending() { attached(); return pending; }
     public boolean owns(World candidate) { attached(); return world == candidate; }
+    public boolean traversing() { attached(); return traversalDepth != 0; }
     public long revision() { attached(); return revision; }
     public long restarts() { attached(); return restarts; }
     public long totalWork() { attached(); return totalWork; }

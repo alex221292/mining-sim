@@ -8,6 +8,10 @@ import miningsim.structural.RockDamageSystem;
 import miningsim.structural.RockReferenceScenes;
 import miningsim.world.Material;
 import miningsim.world.World;
+import miningsim.fragment.ExtractionCommit;
+import miningsim.fragment.ExtractionPlanner;
+import miningsim.fragment.FragmentRegistry;
+import miningsim.fragment.RockFragment;
 
 /** Explicit one-tick coordinator for small reference worlds, independent of painting. */
 public final class StructuralSimulationController {
@@ -21,6 +25,7 @@ public final class StructuralSimulationController {
     private final World world;
     private final RockConnectivity connectivity;
     private final RockDamageSystem damage;
+    private final FragmentRegistry fragments = new FragmentRegistry(1024);
     private int selectedX, selectedY;
     private long ticks, analyzedRevision = -1;
     private int analyzedComponent = -1;
@@ -33,6 +38,14 @@ public final class StructuralSimulationController {
         selectedX = scene.x(); selectedY = scene.y();
     }
     public World world() { return world; }
+    public List<RockFragment> fragments() { return fragments.snapshot(); }
+    /** Explicit command; unsupported status must already have been presented on an earlier tick. */
+    public ExtractionCommit.Status extractSelected() {
+        if (!view().status().equals("UNSUPPORTED")) return ExtractionCommit.Status.INVALID;
+        var result = ExtractionPlanner.prepare(world,connectivity,selectedX,selectedY,MAX_WORLD_CELLS);
+        if (result.status() != ExtractionPlanner.Status.READY) return ExtractionCommit.Status.INVALID;
+        return ExtractionCommit.commit(result.plan(),fragments).status();
+    }
     public void select(int x, int y) {
         if (world.contains(x,y) && world.get(x,y) == Material.STONE) {
             selectedX = x; selectedY = y; analyzedComponent = -1;

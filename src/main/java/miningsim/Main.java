@@ -29,6 +29,7 @@ import miningsim.app.Camera2D;
 import miningsim.app.Brush;
 import miningsim.app.StructuralSimulationController;
 import miningsim.render.CrackOverlay;
+import miningsim.render.FragmentOverlay;
 import miningsim.structural.RockReferenceScenes;
 import miningsim.render.Java2DRenderer;
 import miningsim.render.Renderer;
@@ -116,6 +117,7 @@ public final class Main {
                         case KeyEvent.VK_N -> { if (control.singleStep()) { ticks++; if (structural != null) structural.tick(); } }
                         case KeyEvent.VK_F3 -> diagnostics = !diagnostics;
                         case KeyEvent.VK_F4 -> chooseReferenceScene();
+                        case KeyEvent.VK_F5 -> { if (structural != null) { var result=structural.extractSelected(); if (result != miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); repaint(); } }
                         case KeyEvent.VK_C -> world.clear();
                         case KeyEvent.VK_LEFT -> panLeft = true;
                         case KeyEvent.VK_RIGHT -> panRight = true;
@@ -225,6 +227,7 @@ public final class Main {
             super.paintComponent(graphics);
             Graphics2D g = (Graphics2D) graphics.create();
             renderer.render(g, world, camera, getWidth(), getHeight());
+            if (structural != null) FragmentOverlay.render(g,camera,structural.fragments());
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
@@ -237,7 +240,7 @@ public final class Main {
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
             g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
-            g.drawString("F3: diagnostics | F4: replace with test scene | Middle click: select stone",8,101);
+            g.drawString("F3: diagnostics | F4: scene | F5: extract unsupported | Middle click: select",8,101);
             if (diagnostics) {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {

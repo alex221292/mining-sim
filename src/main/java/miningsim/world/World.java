@@ -2,14 +2,25 @@ package miningsim.world;
 
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import miningsim.fragment.FragmentRegistry;
 
 public final class World {
     public enum Mode { LEGACY, BEDROCK_ENABLED }
     public enum Mutation { CHANGED, NO_OP, REJECTED }
+    public enum BatchResult { CHANGED, NO_OP, REJECTED }
+    public record CellChange(int x, int y, Material expected, Material replacement) { }
     /** Synchronous single consumer; callbacks must not mutate this world or throw. */
     public interface ChangeSink {
         void changed(int x, int y, byte previous, byte next);
         void invalidated();
+        /** Called once after a complete batch; default maintains compatibility with existing sinks. */
+        default void changedBatch(List<CellChange> changes) {
+            for (CellChange c : changes) changed(c.x(), c.y(), c.expected().id(), c.replacement().id());
+        }
+        default boolean allowBatch() { return true; }
     }
     public static final int ACTIVITY_TILE_SIZE = 32;
     public static final int CHUNK_SIZE = Chunk.SIZE;
@@ -89,6 +100,53 @@ public final class World {
         if (trackActivity) changedTiles[(y / ACTIVITY_TILE_SIZE) * tileColumns + x / ACTIVITY_TILE_SIZE] = true;
         if (changeSink != null) changeSink.changed(x, y, previous, id);
         return Mutation.CHANGED;
+    }
+    /** Single-owner operation: validate completely, then publish one immutable batch. */
+    public BatchResult replaceAllIfMatches(List<CellChange> changes) {
+        return replaceAllIfMatches(changes,null);
+    }
+    /** Extraction-only ownership transfer. The prepared registry state is published before observers are notified. */
+    public BatchResult replaceAllIfMatches(List<CellChange> changes, FragmentRegistry.Prepared prepared) {
+        Objects.requireNonNull(changes);
+        if (changeSink != null && !changeSink.allowBatch()) return BatchResult.REJECTED;
+        if (prepared != null && !prepared.valid()) return BatchResult.REJECTED;
+        ArrayList<CellChange> sorted = new ArrayList<>(changes);
+        if (sorted.stream().anyMatch(Objects::isNull)) return BatchResult.REJECTED;
+        sorted.sort(Comparator.comparingInt(CellChange::y).thenComparingInt(CellChange::x));
+        ArrayList<CellChange> actual = new ArrayList<>();
+        CellChange previous = null;
+        for (CellChange c : sorted) {
+            if (c.expected() == null || c.replacement() == null || !contains(c.x(),c.y()) ||
+                    previous != null && previous.x() == c.x() && previous.y() == c.y()) return BatchResult.REJECTED;
+            previous = c;
+            Material current = get(c.x(),c.y());
+            if (current != c.expected()) return BatchResult.REJECTED;
+            if (current != c.replacement()) {
+                if (current == Material.BEDROCK || c.replacement() == Material.BEDROCK) return BatchResult.REJECTED;
+                actual.add(c);
+            }
+        }
+        if (actual.isEmpty()) return prepared == null ? BatchResult.NO_OP : BatchResult.REJECTED;
+        if (prepared != null) {
+            var fragment = prepared.fragment();
+            if (!fragment.descriptor().substance().equals(miningsim.resource.SubstanceRegistry.reference().get(miningsim.resource.SubstanceRegistry.STONE))) return BatchResult.REJECTED;
+            if (actual.size() != fragment.descriptor().cellCount()) return BatchResult.REJECTED;
+            for (int i = 0; i < actual.size(); i++) {
+                var change = actual.get(i); var cell = fragment.descriptor().cells().get(i);
+                if (change.expected() != Material.STONE || change.replacement() != Material.AIR ||
+                        change.x() != fragment.worldX(cell) || change.y() != fragment.worldY(cell)) return BatchResult.REJECTED;
+            }
+        }
+        List<CellChange> notification = List.copyOf(actual);
+        for (CellChange c : notification) {
+            Chunk chunk = chunkAt(c.x(),c.y());
+            chunk.cells[((c.y() & CHUNK_MASK) << CHUNK_SHIFT) | (c.x() & CHUNK_MASK)] = c.replacement().id();
+            if (trackActivity) changedTiles[(c.y() / ACTIVITY_TILE_SIZE) * tileColumns + c.x() / ACTIVITY_TILE_SIZE] = true;
+        }
+        // No external code runs between preflight and this allocation-free single-owner publication.
+        if (prepared != null) prepared.publish();
+        if (changeSink != null) changeSink.changedBatch(notification);
+        return BatchResult.CHANGED;
     }
     public void clear() {
         if (mode == Mode.LEGACY) {
