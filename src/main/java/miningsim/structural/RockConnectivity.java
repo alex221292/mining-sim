@@ -106,6 +106,7 @@ public final class RockConnectivity implements World.ChangeSink {
         broken.set(key); dirty(); return true;
     }
     public boolean pending() { attached(); return pending; }
+    public boolean owns(World candidate) { attached(); return world == candidate; }
     public long revision() { attached(); return revision; }
     public long restarts() { attached(); return restarts; }
     public long totalWork() { attached(); return totalWork; }
