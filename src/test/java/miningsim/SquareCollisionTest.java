@@ -11,6 +11,7 @@ class SquareCollisionTest {
         assertNull(SquareCollision.intersect(a, new Square(1, 0, 0)));
         var c = SquareCollision.intersect(a, new Square(0.75, 0, 0));
         assertEquals(0.25, c.penetrationCells(), 1e-12);
+        assertEquals(0.375, c.pointX(), 1e-12); assertEquals(0, c.pointY(), 1e-12);
         assertEquals(1, c.normalX(), 1e-12); assertEquals(0, c.normalY(), 1e-12);
         assertEquals(-1, SquareCollision.intersect(new Square(0.75, 0, 0), a).normalX(), 1e-12);
     }
@@ -22,5 +23,14 @@ class SquareCollisionTest {
         assertNotNull(c); assertTrue(c.penetrationCells() > 0);
         assertEquals(1, Math.hypot(c.normalX(), c.normalY()), 1e-12);
         assertThrows(IllegalArgumentException.class, () -> new Square(0, Double.NaN, 0));
+    }
+
+    @Test void offCenterOverlapUsesIntersectionNotCenters() {
+        var c = SquareCollision.intersect(new Square(0, 0, 0), new Square(0.75, 0.4, 0));
+        assertEquals(0.25, c.penetrationCells(), 1e-12);
+        assertEquals(0.375, c.pointX(), 1e-12);
+        assertEquals(0.2, c.pointY(), 1e-12);
+        assertEquals(1, c.normalX(), 1e-12);
+        assertEquals(0, c.normalY(), 1e-12);
     }
 }
