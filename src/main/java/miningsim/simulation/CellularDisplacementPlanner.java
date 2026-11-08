@@ -79,7 +79,9 @@ public final class CellularDisplacementPlanner {
                 long key=key(world,x,y);
                 if(reserved.contains(key) || world.get(x,y)!=Material.AIR && !vacated.contains(key)) continue;
                 var next=new Position(x,y,p.distance()+1);
-                if(!occupancy.occupied(x,y)) return next;
+                // Vacated sources may be traversed but never become destinations: the
+                // batch is validated against the original World, not intermediate writes.
+                if(!occupancy.occupied(x,y) && world.get(x,y)==Material.AIR) return next;
                 queue.addLast(next);
             }
         }

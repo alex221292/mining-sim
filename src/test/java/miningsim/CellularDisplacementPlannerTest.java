@@ -85,6 +85,12 @@ class CellularDisplacementPlannerTest {
         var plan=CellularDisplacementPlanner.plan(w,snapshot,CellularDisplacementPlanner.Limits.defaults());
         assertEquals(2,plan.moves().size()); assertEquals(2,plan.moves().get(0).fromX()); assertEquals(3,plan.moves().get(1).fromX());
         assertNotEquals(List.of(plan.moves().get(0).toX(),plan.moves().get(0).toY()),List.of(plan.moves().get(1).toX(),plan.moves().get(1).toY()));
+        var coordinates=new java.util.HashSet<String>();
+        for(var change:plan.changes()) {
+            assertTrue(coordinates.add(change.x()+","+change.y()));
+            assertEquals(w.get(change.x(),change.y()),change.expected());
+        }
+        for(var move:plan.moves()) assertEquals(Material.AIR,w.get(move.toX(),move.toY()));
         assertEquals(World.BatchResult.CHANGED,w.replaceAllIfMatches(plan.changes()));
         assertEquals(2,w.occupiedCount());
         for(var move:plan.moves()) { assertEquals(move.material(),w.get(move.toX(),move.toY())); assertFalse(snapshot.occupied(move.toX(),move.toY())); }
@@ -104,5 +110,20 @@ class CellularDisplacementPlannerTest {
             var sim=new Simulation(w,42,mode,false); sim.setOccupancy(occupancy(w,3,2)); sim.step();
             assertEquals(Material.SAND,w.get(2,1)); assertEquals(Material.AIR,w.get(3,2)); assertEquals(3,w.occupiedCount());
         }
+    }
+    @Test void vacatedSourceIsPassageButNeverBatchDestination() {
+        var w=new World(5,3); w.set(1,1,Material.SAND); w.set(2,1,Material.WATER);
+        w.set(3,1,Material.STONE); w.set(2,0,Material.STONE); w.set(2,2,Material.STONE);
+        var r=new FragmentRegistry(2);
+        var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new Cell(0,0)));
+        r.insert(shape,1,1,0); r.insert(shape,2,1,0); var physics=new RigidBodySystem(r); physics.synchronize();
+        var snapshot=new RigidBodyOccupancyIndex(w,RigidBodyOccupancyIndex.Limits.defaults()).rebuild(physics,0);
+        var plan=CellularDisplacementPlanner.plan(w,snapshot,CellularDisplacementPlanner.Limits.defaults());
+        assertEquals(1,plan.moves().get(0).toX()); assertEquals(2,plan.moves().get(0).toY());
+        assertEquals(0,plan.moves().get(1).toX()); assertEquals(1,plan.moves().get(1).toY());
+        var unique=new java.util.HashSet<String>();
+        for(var c:plan.changes()) { assertTrue(unique.add(c.x()+","+c.y())); assertEquals(w.get(c.x(),c.y()),c.expected()); }
+        assertEquals(World.BatchResult.CHANGED,w.replaceAllIfMatches(plan.changes()));
+        assertEquals(Material.SAND,w.get(1,2)); assertEquals(Material.WATER,w.get(0,1)); assertEquals(5,w.occupiedCount());
     }
 }

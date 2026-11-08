@@ -28,13 +28,14 @@ import miningsim.app.SimulationControl;
 import miningsim.app.Camera2D;
 import miningsim.app.Brush;
 import miningsim.app.StructuralSimulationController;
+import miningsim.app.InteractiveSession;
 import miningsim.render.CrackOverlay;
 import miningsim.render.FragmentOverlay;
+import miningsim.render.CoupledDiagnosticsOverlay;
 import miningsim.structural.RockReferenceScenes;
 import miningsim.render.Java2DRenderer;
 import miningsim.render.Renderer;
 import miningsim.persistence.WorldIO;
-import miningsim.simulation.Simulation;
 import miningsim.world.Material;
 import miningsim.world.World;
 
@@ -53,7 +54,8 @@ public final class Main {
     private static final class Sandbox extends JPanel {
         private static final long TICK = 1_000_000_000L / 60;
         private World world = new World(400, 300, World.Mode.BEDROCK_ENABLED);
-        private SimulationControl control = new SimulationControl(new Simulation(world, 12345));
+        private InteractiveSession session = new InteractiveSession(world,null);
+        private SimulationControl control = new SimulationControl(session::tick);
         private Renderer renderer = new Java2DRenderer(world.width(), world.height());
         private final Camera2D camera = new Camera2D();
         private final Timer timer;
@@ -74,7 +76,8 @@ public final class Main {
                 @Override public void mousePressed(MouseEvent e) {
                     requestFocusInWindow();
                     if (SwingUtilities.isMiddleMouseButton(e) && structural != null) {
-                        structural.select((int)Math.floor(camera.screenToWorldX(e.getX())), (int)Math.floor(camera.screenToWorldY(e.getY())));
+                        var target=structural; int x=(int)Math.floor(camera.screenToWorldX(e.getX())),y=(int)Math.floor(camera.screenToWorldY(e.getY()));
+                        session.enqueue(()->target.select(x,y));
                         repaint(); return;
                     }
                     if (SwingUtilities.isLeftMouseButton(e)) left = true;
@@ -114,11 +117,12 @@ public final class Main {
                         case KeyEvent.VK_5 -> brush = Material.GRAVEL;
                         case KeyEvent.VK_6 -> brush = Material.SOIL;
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
-                        case KeyEvent.VK_N -> { if (control.singleStep()) { ticks++; if (structural != null) structural.tick(); } }
+                        case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
                         case KeyEvent.VK_F3 -> diagnostics = !diagnostics;
                         case KeyEvent.VK_F4 -> chooseReferenceScene();
-                        case KeyEvent.VK_F5 -> { if (structural != null) { var result=structural.extractSelected(); if (result != miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); repaint(); } }
-                        case KeyEvent.VK_C -> world.clear();
+                        case KeyEvent.VK_F5 -> { if (structural != null) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
+                        case KeyEvent.VK_C -> resetWorld();
+                        case KeyEvent.VK_F6 -> session.resume();
                         case KeyEvent.VK_LEFT -> panLeft = true;
                         case KeyEvent.VK_RIGHT -> panRight = true;
                         case KeyEvent.VK_UP -> panUp = true;
@@ -159,10 +163,11 @@ public final class Main {
                     WorldIO.write(world, path);
                 } else {
                     World loaded = WorldIO.read(path);
-                    SimulationControl nextControl = new SimulationControl(new Simulation(loaded, 12345));
+                    InteractiveSession nextSession = new InteractiveSession(loaded,null);
+                    SimulationControl nextControl = new SimulationControl(nextSession::tick);
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
-                    world = loaded; control = nextControl; renderer = nextRenderer;
+                    world = loaded; session=nextSession; control = nextControl; renderer = nextRenderer;
                     structural = null; sceneIndex = -1; sceneName = "";
                     camera.reset();
                 }
@@ -174,22 +179,35 @@ public final class Main {
             }
         }
 
+        private void resetWorld() {
+            boolean paused=control.paused();
+            world=new World(world.width(),world.height(),world.mode()); structural=null;
+            session=new InteractiveSession(world,null); control=new SimulationControl(session::tick);
+            if(paused) control.togglePause();
+            renderer=new Java2DRenderer(world.width(),world.height()); sceneIndex=-1; sceneName="";
+        }
+
         private void chooseReferenceScene() {
             timer.stop();
             try {
                 if (JOptionPane.showConfirmDialog(this, "Replace current world with a reference scene? Unsaved work will be lost.",
                         "Reference scene", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
-                int next = (sceneIndex + 1) % 5;
+                int next = (sceneIndex + 1) % 8;
                 var scene = switch (next) {
                     case 0 -> RockReferenceScenes.roof("short",4,1);
                     case 1 -> RockReferenceScenes.roof("long",12,1);
                     case 2 -> RockReferenceScenes.roof("thick",12,2);
                     case 3 -> RockReferenceScenes.cantilever(8);
-                    default -> RockReferenceScenes.island();
+                    case 4 -> RockReferenceScenes.island();
+                    case 5 -> RockReferenceScenes.interactive("falling rock",Material.AIR);
+                    case 6 -> RockReferenceScenes.interactive("rock and sand",Material.SAND);
+                    default -> RockReferenceScenes.interactive("rock and water",Material.WATER);
                 };
                 boolean paused = control.paused();
                 world = scene.world(); structural = new StructuralSimulationController(scene);
-                control = new SimulationControl(new Simulation(world,12345));
+                session = new InteractiveSession(world,structural);
+                if(next>=5) { structural.tick(); session.extractSelected(); }
+                control = new SimulationControl(session::tick);
                 if (paused) control.togglePause();
                 renderer = new Java2DRenderer(world.width(),world.height()); sceneIndex = next; sceneName = scene.name();
                 camera.reset(); camera.zoomAt(Camera2D.MAX_ZOOM,0,0);
@@ -199,7 +217,10 @@ public final class Main {
 
         private void paintAt(MouseEvent e) {
             if (getWidth() <= 0 || getHeight() <= 0 || (!left && !right)) return;
-            Brush.paint(world, camera, e.getX(), e.getY(), 3, right ? Material.AIR : brush);
+            double x=camera.screenToWorldX(e.getX()),y=camera.screenToWorldY(e.getY());
+            var target=session; var material=right?Material.AIR:brush;
+            target.enqueue(()->Brush.paintWorld(target.world(),x,y,3,material,
+                    target.isCoupled()?target.occupancy().snapshot():null));
         }
 
         private void update() {
@@ -212,7 +233,7 @@ public final class Main {
             previous = now;
             if (control.paused()) accumulator = 0;
             while (accumulator >= TICK) {
-                if (control.tick()) { ticks++; if (structural != null) structural.tick(); }
+                if (control.tick()) ticks++;
                 accumulator -= TICK;
             }
             if (now - statsStart >= 1_000_000_000L) {
@@ -227,11 +248,11 @@ public final class Main {
             super.paintComponent(graphics);
             Graphics2D g = (Graphics2D) graphics.create();
             renderer.render(g, world, camera, getWidth(), getHeight());
-            if (structural != null) FragmentOverlay.render(g,camera,structural.fragments());
+            if (session.isCoupled()) FragmentOverlay.renderBodies(g,camera,session.physics().bodies());
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 128 : 110);
+            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 185 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
@@ -240,7 +261,7 @@ public final class Main {
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
             g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
-            g.drawString("F3: diagnostics | F4: scene | F5: extract unsupported | Middle click: select",8,101);
+            g.drawString("F3: diagnostics | F4: scene | F5: extract | F6: retry | Middle click: select",8,101);
             if (diagnostics) {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {
@@ -248,6 +269,7 @@ public final class Main {
                     g.drawString(String.format(Locale.ROOT,"%s: %s | component %d (%d cells) | U %.2f damage %.2f | broken %d | tick %d | selected only",
                             sceneName,v.status(),v.componentId(),v.cells(),v.utilization(),v.damage(),broken,v.ticks()),8,118);
                 }
+                CoupledDiagnosticsOverlay.render(g,session);
             }
             g.dispose();
             frames++;

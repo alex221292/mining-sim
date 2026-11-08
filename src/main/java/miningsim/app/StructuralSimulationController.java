@@ -30,6 +30,7 @@ public final class StructuralSimulationController {
     private long ticks, analyzedRevision = -1;
     private int analyzedComponent = -1;
     private View view = new View("PENDING", -1, 0, 0, 0, 0, List.of());
+    private String extractionMessage = "";
 
     public StructuralSimulationController(RockReferenceScenes.Scene scene) {
         Objects.requireNonNull(scene);
@@ -39,12 +40,16 @@ public final class StructuralSimulationController {
     }
     public World world() { return world; }
     public List<RockFragment> fragments() { return fragments.snapshot(); }
+    public FragmentRegistry registry() { return fragments; }
+    public String extractionMessage() { return extractionMessage; }
     /** Explicit command; unsupported status must already have been presented on an earlier tick. */
     public ExtractionCommit.Status extractSelected() {
-        if (!view().status().equals("UNSUPPORTED")) return ExtractionCommit.Status.INVALID;
-        var result = ExtractionPlanner.prepare(world,connectivity,selectedX,selectedY,MAX_WORLD_CELLS);
-        if (result.status() != ExtractionPlanner.Status.READY) return ExtractionCommit.Status.INVALID;
-        return ExtractionCommit.commit(result.plan(),fragments).status();
+        if (!view().status().equals("UNSUPPORTED")) { extractionMessage="Select an analyzed unsupported component"; return ExtractionCommit.Status.INVALID; }
+        var result = ExtractionPlanner.prepare(world,connectivity,selectedX,selectedY,64);
+        if (result.status() != ExtractionPlanner.Status.READY) { extractionMessage="Extraction: "+result.status()+" (limit 64 cells)"; return ExtractionCommit.Status.INVALID; }
+        var status=ExtractionCommit.commit(result.plan(),fragments).status();
+        extractionMessage="Extraction: "+status;
+        return status;
     }
     public void select(int x, int y) {
         if (world.contains(x,y) && world.get(x,y) == Material.STONE) {

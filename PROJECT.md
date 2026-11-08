@@ -139,6 +139,8 @@ M4.0 is design only: the confirmed structural physics and construction decisions
 
 M4.3c connects the small selected-component rock reference scenes to Swing diagnostics; limitations and controls are in `docs/m4-3c-swing.md`. Rock fragments do not move.
 
+M4.4b.4c adds fixed-tick interactive rigid fragments, occupancy-aware painting and coupled demonstration scenes. See `docs/m4-4b4c-rendering-controls.md` for ownership, controls, measured headless performance and limitations; desktop GUI verification remains outstanding.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.

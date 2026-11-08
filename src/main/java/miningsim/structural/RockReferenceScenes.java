@@ -33,5 +33,17 @@ public final class RockReferenceScenes {
         World w = new World(7,6,World.Mode.BEDROCK_ENABLED); w.set(3,1,Material.STONE); w.set(4,1,Material.STONE);
         return create("island",w,3,1);
     }
+    /** Small reproducible interactive fixtures; calibration scenes remain unchanged. */
+    public static Scene interactive(String name, Material material) {
+        if(material!=Material.AIR && material!=Material.SAND && material!=Material.WATER) throw new IllegalArgumentException();
+        World w=new World(24,20,World.Mode.BEDROCK_ENABLED);
+        w.set(12,3,Material.STONE);
+        if(material!=Material.AIR) {
+            for(int x=8;x<=16;x++) w.set(x,17,Material.WOOD);
+            w.set(8,16,Material.WOOD); w.set(16,16,Material.WOOD);
+            for(int x=10;x<=14;x++) w.set(x,16,material);
+        }
+        return create(name,w,12,3);
+    }
     public static void finishConnectivity(RockConnectivity connectivity) { while (connectivity.pending()) connectivity.advance(10000); }
 }
