@@ -96,6 +96,7 @@ public final class StaticContactSolver {
     int velocityIterations() { return config.velocityIterations(); }
     int positionIterations() { return config.positionIterations(); }
     long worldRevision() { return query.worldRevision(); }
+    boolean coupledTo(miningsim.world.World world) { return query.coupledTo(world); }
     boolean supported(RigidBody body) {
         for (var contact : query(body)) if (contact.normalY() > 0.5) return true;
         return false;

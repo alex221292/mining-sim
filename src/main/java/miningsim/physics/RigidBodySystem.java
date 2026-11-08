@@ -10,8 +10,11 @@ public final class RigidBodySystem {
     enum Checkpoint { AFTER_SYNC, AFTER_WAKE, DURING_WAKE_PROPAGATION, AFTER_STATIC_PREPARE, AFTER_PAIR_QUERY,
                       AFTER_VELOCITY, AFTER_POSITION, BEFORE_SUPPORT, DURING_SUPPORT_EVALUATION, AFTER_PUBLICATION }
     private java.util.function.Consumer<Checkpoint> testCheckpoint;
+    private java.util.function.Consumer<RigidBody> coupledTrace;
     void setTestCheckpoint(java.util.function.Consumer<Checkpoint> checkpoint) { testCheckpoint = checkpoint; }
     private void checkpoint(Checkpoint point) { if (testCheckpoint != null) testCheckpoint.accept(point); }
+    void setCoupledTrace(java.util.function.Consumer<RigidBody> trace) { coupledTrace=trace; }
+    private void trace(RigidBody body) { if(coupledTrace!=null) coupledTrace.accept(body); }
     public record MotionConfig(double maxTravelCells, int maxMicrostepsPerBody, int maxTotalMicrosteps) {
         public MotionConfig {
             if (!Double.isFinite(maxTravelCells) || maxTravelCells <= 0 || maxTravelCells > 0.25
@@ -67,6 +70,30 @@ public final class RigidBodySystem {
     private java.util.Set<Long> lastSuccessfulBodyIds = java.util.Set.of();
     private StaticContactSolver.Diagnostics diagnostics = new StaticContactSolver.Diagnostics(0, 0, 0, 0, 0, 0);
     private final TreeMap<Long, RigidBody> bodies = new TreeMap<>();
+
+    /** Private-to-package checkpoint for the single-owner coupled commit. */
+    final class CoupledCheckpoint {
+        private final TreeMap<Long,RigidBody> savedBodies = new TreeMap<>(bodies);
+        private final java.util.ArrayList<RigidBody.State> states = new java.util.ArrayList<>(savedBodies.size());
+        private final StaticContactSolver.Diagnostics savedDiagnostics = diagnostics;
+        private final MotionDiagnostics savedMotion = motionDiagnostics;
+        private final InteractionDiagnostics savedInteraction = interactionDiagnostics;
+        private final String savedFailure = lastFailure;
+        private final long savedRevision = observedWorldRevision;
+        private final java.util.Set<Long> savedIds = lastSuccessfulBodyIds;
+        private final StaticContactSolver.CounterState savedCounters = solver == null ? null : solver.counterState();
+        private CoupledCheckpoint() { for(var b:savedBodies.values()) states.add(b.state()); }
+        void restore() {
+            bodies.clear(); bodies.putAll(savedBodies); int i=0;
+            for(var b:savedBodies.values()) b.restore(states.get(i++));
+            diagnostics=savedDiagnostics; motionDiagnostics=savedMotion; interactionDiagnostics=savedInteraction;
+            lastFailure=savedFailure; observedWorldRevision=savedRevision; lastSuccessfulBodyIds=savedIds;
+            if(solver!=null) solver.restoreCounters(savedCounters);
+            interactionWork=null;
+        }
+    }
+    CoupledCheckpoint coupledCheckpoint() { return new CoupledCheckpoint(); }
+    boolean coupledTo(miningsim.world.World world) { return solver != null && solver.coupledTo(world); }
 
     public RigidBodySystem(FragmentRegistry registry) { this(registry, 4); }
     public RigidBodySystem(FragmentRegistry registry, int substeps) {
@@ -141,6 +168,7 @@ public final class RigidBodySystem {
         try {
             synchronize();
             checkpoint(Checkpoint.AFTER_SYNC);
+            if(coupledTrace!=null) for(var body:bodies.values()) trace(body);
             if (solver != null) solver.resetDiagnostics();
             if (bodyQuery != null) {
                 interactionWork = new InteractionWork();
@@ -173,9 +201,11 @@ public final class RigidBodySystem {
                         throw new IllegalStateException("Motion bound exceeded for body " + body.id());
                     double x = body.xCells(), y = body.yCells(), angle = body.angleRadians();
                     body.integrate(interval, GRAVITY_METRES_PER_SECOND_SQUARED);
+                    trace(body);
                     maxDisplacement = Math.max(maxDisplacement, Math.hypot(body.xCells() - x, body.yCells() - y));
                     maxAngle = Math.max(maxAngle, Math.abs(body.angleRadians() - angle));
                     if (solver != null) solver.solve(body);
+                    trace(body);
                     maxPointTravel = Math.max(maxPointTravel, predicted);
                     executed = Math.incrementExact(executed); used = Math.incrementExact(used); perBody.put(body.id(), used); maxPerBody = Math.max(maxPerBody, used);
                     remaining = required == 1 ? 0 : remaining - interval;
@@ -225,6 +255,7 @@ public final class RigidBodySystem {
                     maxTravel = Math.max(maxTravel, travelBound(body, interval));
                     double x = body.xCells(), y = body.yCells(), angle = body.angleRadians();
                     body.integrate(interval, GRAVITY_METRES_PER_SECOND_SQUARED);
+                    trace(body);
                     maxDisplacement = Math.max(maxDisplacement, Math.hypot(body.xCells() - x, body.yCells() - y));
                     maxAngle = Math.max(maxAngle, Math.abs(body.angleRadians() - angle));
                 }
@@ -245,7 +276,7 @@ public final class RigidBodySystem {
                 }
                 checkpoint(Checkpoint.AFTER_VELOCITY);
                 for (int pass = 0; pass < interactionConfig.positionIterations(); pass++) {
-                    if (solver != null && pass < solver.positionIterations()) for (var body : bodies.values()) if (!body.sleeping()) solver.correctPosition(body);
+                    if (solver != null && pass < solver.positionIterations()) for (var body : bodies.values()) if (!body.sleeping()) { solver.correctPosition(body); trace(body); }
                     var contacts = queryBodies();
                     for (var contact : contacts) {
                         var a = bodies.get(contact.bodyA()); var b = bodies.get(contact.bodyB());
@@ -255,9 +286,11 @@ public final class RigidBodySystem {
                         double correction = Math.min(0.2, Math.max(0, contact.penetrationCells() - 0.01) * 0.2);
                         a.translate(-contact.normalX() * correction * invA / (invA + invB), -contact.normalY() * correction * invA / (invA + invB));
                         b.translate(contact.normalX() * correction * invB / (invA + invB), contact.normalY() * correction * invB / (invA + invB));
+                        trace(a); trace(b);
                     }
                 }
                 checkpoint(Checkpoint.AFTER_POSITION);
+                if(coupledTrace!=null) for(var body:bodies.values()) trace(body);
                 shared = Math.incrementExact(shared); work = Math.addExact(work, awake); remaining = required == 1 ? 0 : remaining - interval;
             } while (remaining > 0);
         }

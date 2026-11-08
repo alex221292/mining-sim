@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import miningsim.fragment.FragmentRegistry;
+import miningsim.physics.RigidBodyOccupancyIndex;
 
 public final class World {
     public enum Mode { LEGACY, BEDROCK_ENABLED }
@@ -112,9 +113,17 @@ public final class World {
     }
     /** Extraction-only ownership transfer. The prepared registry state is published before observers are notified. */
     public BatchResult replaceAllIfMatches(List<CellChange> changes, FragmentRegistry.Prepared prepared) {
+        return replaceAllIfMatches(changes,prepared,null);
+    }
+    /** Single-owner coupled commit: publish preallocated occupancy before the post-commit callback. */
+    public BatchResult replaceAllAndPublishOccupancy(List<CellChange> changes, RigidBodyOccupancyIndex.Prepared occupancy) {
+        return replaceAllIfMatches(changes,null,Objects.requireNonNull(occupancy));
+    }
+    private BatchResult replaceAllIfMatches(List<CellChange> changes, FragmentRegistry.Prepared prepared, RigidBodyOccupancyIndex.Prepared occupancy) {
         Objects.requireNonNull(changes);
         if (changeSink != null && !changeSink.allowBatch()) return BatchResult.REJECTED;
         if (prepared != null && !prepared.valid()) return BatchResult.REJECTED;
+        if (occupancy != null && !occupancy.valid()) return BatchResult.REJECTED;
         ArrayList<CellChange> sorted = new ArrayList<>(changes);
         if (sorted.stream().anyMatch(Objects::isNull)) return BatchResult.REJECTED;
         sorted.sort(Comparator.comparingInt(CellChange::y).thenComparingInt(CellChange::x));
@@ -131,7 +140,11 @@ public final class World {
                 actual.add(c);
             }
         }
-        if (actual.isEmpty()) return prepared == null ? BatchResult.NO_OP : BatchResult.REJECTED;
+        if (actual.isEmpty()) {
+            if (prepared != null) return BatchResult.REJECTED;
+            if (occupancy != null) occupancy.publish();
+            return BatchResult.NO_OP;
+        }
         if (prepared != null) {
             var fragment = prepared.fragment();
             if (!fragment.descriptor().substance().equals(miningsim.resource.SubstanceRegistry.reference().get(miningsim.resource.SubstanceRegistry.STONE))) return BatchResult.REJECTED;
@@ -152,6 +165,7 @@ public final class World {
         mutationRevision = nextRevision;
         // No external code runs between preflight and this allocation-free single-owner publication.
         if (prepared != null) prepared.publish();
+        if (occupancy != null) occupancy.publish();
         if (changeSink != null) changeSink.changedBatch(notification);
         return BatchResult.CHANGED;
     }

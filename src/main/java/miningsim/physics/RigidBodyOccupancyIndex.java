@@ -60,6 +60,17 @@ public final class RigidBodyOccupancyIndex {
     private final int width,height;
     private final Limits limits;
     private Snapshot snapshot;
+    /** Prepared against one published snapshot; no allocation is needed for publication. */
+    public final class Prepared {
+        private final Snapshot expected, next;
+        private Prepared(Snapshot expected, Snapshot next) { this.expected=expected; this.next=next; }
+        public Snapshot snapshot() { return next; }
+        public boolean valid() { return snapshot == expected; }
+        public void publish() {
+            if (!valid()) throw new IllegalStateException("Occupancy publication is stale");
+            snapshot = next;
+        }
+    }
     public RigidBodyOccupancyIndex(World world, Limits limits) {
         Objects.requireNonNull(world); this.width=world.width(); this.height=world.height(); this.limits=Objects.requireNonNull(limits);
         snapshot=new Snapshot(width,height,new long[0],new int[]{0},new long[0],new Diagnostics(0,0,0,0,0,0,0,0,0,0,0));
@@ -68,6 +79,10 @@ public final class RigidBodyOccupancyIndex {
     public Snapshot rebuild(RigidBodySystem system,long generation) { return rebuild(Objects.requireNonNull(system).bodies(),generation); }
     /** The body list and transforms must not change concurrently with this single-owner call. */
     public Snapshot rebuild(List<RigidBody> input,long generation) {
+        var prepared=prepare(input,generation); prepared.publish(); return prepared.snapshot();
+    }
+    public Prepared prepare(RigidBodySystem system,long generation) { return prepare(Objects.requireNonNull(system).bodies(),generation); }
+    public Prepared prepare(List<RigidBody> input,long generation) {
         Objects.requireNonNull(input);
         if(input.size()>limits.bodies()) throw failure("bodies",input.size(),limits.bodies());
         var bodies=new ArrayList<>(input); bodies.sort(Comparator.comparingLong(RigidBody::id));
@@ -115,13 +130,13 @@ public final class RigidBodyOccupancyIndex {
         }
         offsets[i]=pos;
         var stats=new Diagnostics(revision,generation,bodies.size(),cells,candidates,checks,positive,map.size(),memberships,multi,clipped);
-        var next=new Snapshot(width,height,keys,offsets,ids,stats); snapshot=next; return next;
+        var next=new Snapshot(width,height,keys,offsets,ids,stats); return new Prepared(snapshot,next);
     }
     private static IllegalStateException failure(String name,long requested,long allowed) {
         return new IllegalStateException("Occupancy "+name+" limit exceeded: "+requested+" > "+allowed);
     }
     /** Clip a transformed square to the candidate cell in local coordinates, then use shoelace area. */
-    private static double intersectionArea(double[] px,double[] py,long cellX,long cellY) {
+    static double intersectionArea(double[] px,double[] py,long cellX,long cellY) {
         double[] x=new double[12],y=new double[12],nx=new double[12],ny=new double[12];
         int n=4; for(int i=0;i<n;i++) { x[i]=px[i]-cellX; y[i]=py[i]-cellY; }
         for(int edge=0;edge<4 && n>0;edge++) {

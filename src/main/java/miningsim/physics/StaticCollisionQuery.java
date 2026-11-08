@@ -9,6 +9,7 @@ import miningsim.world.World;
 
 /** Read-only discrete overlap query. This is not a sweep or a collision response. */
 public final class StaticCollisionQuery {
+    public enum MaterialPolicy { LEGACY, DISPLACE_GRANULAR }
     public enum Boundary { NONE, LEFT, RIGHT, TOP, BOTTOM }
     public record Contact(long bodyId, Cell fragmentCell, int worldX, int worldY,
                           double normalX, double normalY, double penetrationCells,
@@ -18,18 +19,31 @@ public final class StaticCollisionQuery {
     }
     private final World world;
     private final long maxCandidates, maxChecks;
+    private final MaterialPolicy policy;
 
     public StaticCollisionQuery(World world, long maxCandidates, long maxChecks) {
+        this(world,maxCandidates,maxChecks,MaterialPolicy.LEGACY);
+    }
+    public StaticCollisionQuery(World world, long maxCandidates, long maxChecks, MaterialPolicy policy) {
         this.world = Objects.requireNonNull(world);
         if (maxCandidates < 1 || maxChecks < 1) throw new IllegalArgumentException("Work limits must be positive");
         this.maxCandidates = maxCandidates; this.maxChecks = maxChecks;
+        this.policy = Objects.requireNonNull(policy);
     }
     long worldRevision() { return world.mutationRevision(); }
+    boolean coupledTo(World candidate) { return world==candidate && policy==MaterialPolicy.DISPLACE_GRANULAR; }
 
     public static boolean solid(Material material) {
         return switch (Objects.requireNonNull(material)) {
             case STONE, BEDROCK, WOOD, SAND, SOIL, GRAVEL -> true;
             case AIR, WATER -> false;
+        };
+    }
+    private boolean isSolid(Material material) {
+        if(policy==MaterialPolicy.LEGACY) return solid(material);
+        return switch(material) {
+            case STONE, BEDROCK, WOOD -> true;
+            case AIR, WATER, SAND, SOIL, GRAVEL -> false;
         };
     }
 
@@ -46,7 +60,7 @@ public final class StaticCollisionQuery {
         long checks = 0;
         var contacts = new ArrayList<Contact>();
         for (int y = top; y < bottom; y++) for (int x = left; x < right; x++) {
-            if (!solid(world.get(x, y))) continue;
+            if (!isSolid(world.get(x, y))) continue;
             var fixed = new SquareCollision.Square(x + 0.5, y + 0.5, 0);
             for (var cell : body.fragment().descriptor().cells()) {
                 checks = Math.incrementExact(checks);
@@ -58,10 +72,10 @@ public final class StaticCollisionQuery {
                     double nx = hit.normalX(), ny = hit.normalY(), depth = hit.penetrationCells();
                     // A shared tile edge inside a horizontal solid run is not an exposed wall.
                     // Use the outer top face when the body approaches that face from above.
-                    boolean leftSolid = x > 0 && solid(world.get(x - 1, y));
-                    boolean rightSolid = x + 1 < world.width() && solid(world.get(x + 1, y));
+                    boolean leftSolid = x > 0 && isSolid(world.get(x - 1, y));
+                    boolean rightSolid = x + 1 < world.width() && isSolid(world.get(x + 1, y));
                     boolean run = leftSolid || rightSolid;
-                    boolean exposedTop = y == 0 || !solid(world.get(x, y - 1));
+                    boolean exposedTop = y == 0 || !isSolid(world.get(x, y - 1));
                     boolean internalSide = nx > 0 && leftSolid || nx < 0 && rightSolid;
                     if (run && exposedTop && center.y() < y && (ny > 0.5 || internalSide)) {
                         nx = 0; ny = 1;

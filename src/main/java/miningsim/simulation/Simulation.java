@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.Random;
 import miningsim.world.Material;
 import miningsim.world.World;
+import miningsim.physics.RigidBodyOccupancyIndex;
 
 public final class Simulation {
     public enum Mode { FULL_SCAN, ACTIVE_REGIONS, DIAGNOSTIC_FULL_TRACKED, DIAGNOSTIC_TILED_TRACKED }
@@ -18,6 +19,7 @@ public final class Simulation {
     private final boolean instrument;
     private long visited, movements, collectNanos, resetNanos, tickNanos;
     private int activeTiles;
+    private RigidBodyOccupancyIndex.Snapshot occupancy;
 
     public Simulation(World world, long seed) {
         this(world, seed, Mode.FULL_SCAN, false);
@@ -42,6 +44,16 @@ public final class Simulation {
     public long collectNanos() { return collectNanos; }
     public long resetNanos() { return resetNanos; }
     public long tickNanos() { return tickNanos; }
+    public boolean owns(World candidate) { return world == candidate; }
+
+    /** Publishing a different snapshot wakes all activity tiles conservatively. */
+    public void setOccupancy(RigidBodyOccupancyIndex.Snapshot snapshot) {
+        if (snapshot != null && (snapshot.width() != world.width() || snapshot.height() != world.height()))
+            throw new IllegalArgumentException("Occupancy dimensions do not match world");
+        if (occupancy != snapshot && mode == Mode.ACTIVE_REGIONS) Arrays.fill(active, true);
+        occupancy = snapshot;
+    }
+    private boolean blocked(int x, int y) { return occupancy != null && occupancy.occupied(x,y); }
 
     public void step() {
         long tickStart = instrument ? System.nanoTime() : 0;
@@ -99,7 +111,7 @@ public final class Simulation {
 
     private boolean diagonal(int x, int y, int direction, Material material) {
         int nx = x + direction;
-        if (material == Material.GRAVEL && (!world.contains(nx, y) || world.get(nx, y) != Material.AIR)) return false;
+        if (material == Material.GRAVEL && (!world.contains(nx, y) || blocked(nx,y) || world.get(nx, y) != Material.AIR)) return false;
         return move(x, y, nx, y + 1, material);
     }
 
@@ -129,7 +141,7 @@ public final class Simulation {
         int distance = 0;
         while (distance < WATER_REACH) {
             int nx = x + direction * (distance + 1);
-            if (!world.contains(nx, y) || world.get(nx, y) != Material.AIR) break;
+            if (!world.contains(nx, y) || blocked(nx,y) || world.get(nx, y) != Material.AIR) break;
             distance++;
         }
         return distance;
@@ -139,14 +151,14 @@ public final class Simulation {
     private int distanceToDrop(int x, int y, int direction) {
         for (int distance = 1; distance <= WATER_REACH; distance++) {
             int nx = x + direction * distance;
-            if (!world.contains(nx, y) || world.get(nx, y) != Material.AIR) break;
-            if (world.contains(nx, y + 1) && world.get(nx, y + 1) == Material.AIR) return distance;
+            if (!world.contains(nx, y) || blocked(nx,y) || world.get(nx, y) != Material.AIR) break;
+            if (world.contains(nx, y + 1) && !blocked(nx,y+1) && world.get(nx, y + 1) == Material.AIR) return distance;
         }
         return 0;
     }
 
     private boolean move(int x, int y, int nx, int ny, Material material) {
-        if (!world.contains(nx, ny)) return false;
+        if (!world.contains(nx, ny) || blocked(x,y) || blocked(nx,ny)) return false;
         Material target = world.get(nx, ny);
         // Granular materials displace liquid, preserving both particles.
         if (target != Material.AIR && !material.canDisplace(target)) return false;
