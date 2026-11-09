@@ -20,7 +20,7 @@ public final class CoupledSimulationStep {
     private final RigidBodySystem physics;
     private final RigidBodyOccupancyIndex occupancy;
     private final CellularDisplacementPlanner.Limits limits;
-    private final boolean instrument;
+    private boolean instrument;
     private long physicsNanos,occupancyNanos,planningNanos,commitNanos,cellularNanos;
     private Diagnostics diagnostics=new Diagnostics(0,0,0,0,0,0,0,0,0,0,0,0,false,CellularOutcome.NOT_RUN);
     private String lastFailure;
@@ -49,6 +49,8 @@ public final class CoupledSimulationStep {
     public String lastFailure() { return lastFailure; }
     public FailureStage lastFailureStage() { return lastFailureStage; }
     public PhaseTimes phaseTimes() { return new PhaseTimes(physicsNanos,occupancyNanos,planningNanos,commitNanos,cellularNanos); }
+    /** Change only on the simulation owner thread, between ticks. */
+    public void enableProfiling(boolean enabled) { instrument=enabled; }
     public void step() {
         var checkpoint=physics.coupledCheckpoint(); long worldRevision=world.mutationRevision();
         var traces=new TreeMap<Long,Trace>();
@@ -92,6 +94,11 @@ public final class CoupledSimulationStep {
     private SweepWork rejectUnresolvedSweep(TreeMap<Long,Trace> traces,RigidBodyOccupancyIndex.Snapshot target) {
         long work=0, poseWork=0;
         for(var trace:traces.values()) {
+            // A constant pose has no intermediate-only cells. The prepared final
+            // occupancy already covers every positive-area polygon intersection.
+            boolean stationary=true;
+            for(var pose:trace.poses) if(pose.x()!=trace.body.xCells() || pose.y()!=trace.body.yCells() || pose.angle()!=trace.body.angleRadians()) { stationary=false; break; }
+            if(stationary) continue;
             Pose previous=null;
             for(var pose:trace.poses) {
                 double travel=previous==null?0:Math.hypot(pose.x()-previous.x(),pose.y()-previous.y())

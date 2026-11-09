@@ -5,12 +5,24 @@ import miningsim.fragment.RockFragment;
 
 /** Motion only; the registry remains the owner of the fragment and its material. */
 public final class RigidBody {
-    record State(double x, double y, double angle, double vx, double vy, double omega, boolean sleeping, int sleepTicks) { }
+    // One cell is 0.1 m: 0.05 cells = 5 mm over the quiet window.
+    private static final double SLEEP_WINDOW_TRANSLATION_CELLS = 0.05;
+    // About 0.115 degrees over the quiet window.
+    private static final double SLEEP_WINDOW_ROTATION_RADIANS = 0.002;
+    // Vertical contact impulses fluctuate more than horizontal velocity.
+    private static final double SLEEP_VERTICAL_SPEED_MULTIPLIER = 2.0;
+    record State(double x, double y, double angle, double vx, double vy, double omega, boolean sleeping, int sleepTicks,
+                 double sleepX, double sleepY, double sleepAngle) {
+        State(double x,double y,double angle,double vx,double vy,double omega,boolean sleeping,int sleepTicks) {
+            this(x,y,angle,vx,vy,omega,sleeping,sleepTicks,x,y,angle);
+        }
+    }
     private final RockFragment fragment;
     private final FragmentGeometry geometry;
     private double x, y, angle, velocityX, velocityY, angularVelocity;
     private boolean sleeping;
     private int sleepTicks;
+    private double sleepX,sleepY,sleepAngle;
 
     RigidBody(RockFragment fragment) {
         this.fragment = Objects.requireNonNull(fragment);
@@ -31,19 +43,26 @@ public final class RigidBody {
     public boolean sleeping() { return sleeping; }
     public int sleepTicks() { return sleepTicks; }
 
-    State state() { return new State(x, y, angle, velocityX, velocityY, angularVelocity, sleeping, sleepTicks); }
+    State state() { return new State(x, y, angle, velocityX, velocityY, angularVelocity, sleeping, sleepTicks,sleepX,sleepY,sleepAngle); }
     void restore(State state) {
         x = state.x(); y = state.y(); angle = state.angle();
         velocityX = state.vx(); velocityY = state.vy(); angularVelocity = state.omega();
         sleeping = state.sleeping(); sleepTicks = state.sleepTicks();
+        sleepX=state.sleepX(); sleepY=state.sleepY(); sleepAngle=state.sleepAngle();
     }
     void wake() { sleeping = false; sleepTicks = 0; }
     boolean sleepEligible(boolean supported,RigidBodySystem.SleepConfig config) {
-        return supported && Math.hypot(velocityX,velocityY)<config.linearSpeed() && Math.abs(angularVelocity)<config.angularSpeed();
+        // Contact impulses can leave a small vertical residual at the end of a
+        // microstep. The independent per-tick displacement limit in the island
+        // check still rejects sustained motion, including slow vertical motion.
+        return supported && Math.abs(velocityX)<config.linearSpeed()
+                && Math.abs(velocityY)<SLEEP_VERTICAL_SPEED_MULTIPLIER*config.linearSpeed() && Math.abs(angularVelocity)<config.angularSpeed()
+                && (sleepTicks==0 || (Math.hypot(x-sleepX,y-sleepY)<SLEEP_WINDOW_TRANSLATION_CELLS && Math.abs(angle-sleepAngle)<SLEEP_WINDOW_ROTATION_RADIANS));
     }
     void updateIslandSleep(boolean eligible,int minimumTicks,RigidBodySystem.SleepConfig config) {
         if(sleeping) return;
         if(!eligible) { sleepTicks=0; return; }
+        if(sleepTicks==0) { sleepX=x; sleepY=y; sleepAngle=angle; }
         sleepTicks=minimumTicks+1;
         if(sleepTicks>=config.ticks()) { sleeping=true; velocityX=velocityY=angularVelocity=0; }
     }

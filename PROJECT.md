@@ -147,6 +147,8 @@ M4.5a adds bounded automatic detachment of unsupported STONE in the ordinary bed
 
 M4.5a.1 coordinates sleeping across contact islands and avoids redundant sleeping-stack queries. Headless before/after measurements and remaining contact and GUI limitations are in `docs/m4-5a1-contact-stability.md`.
 
+M4.5a.2 accelerates large compound contacts and explicitly allows supported microscopic sliding to sleep. Measurements, determinism, limitations and manual checks: `docs/m4-5a2-large-compound-contacts.md`.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.

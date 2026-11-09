@@ -119,7 +119,7 @@ public final class Main {
                         case KeyEvent.VK_6 -> brush = Material.SOIL;
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
-                        case KeyEvent.VK_F3 -> diagnostics = !diagnostics;
+                        case KeyEvent.VK_F3 -> { diagnostics = !diagnostics; var target=session; boolean enabled=diagnostics; target.enqueue(()->target.enableProfiling(enabled)); }
                         case KeyEvent.VK_F4 -> chooseReferenceScene();
                         case KeyEvent.VK_F5 -> { if (session.isCoupled()) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
                         case KeyEvent.VK_C -> resetWorld();
@@ -164,7 +164,7 @@ public final class Main {
                     WorldIO.write(world, path);
                 } else {
                     World loaded = WorldIO.read(path);
-                    InteractiveSession nextSession = new InteractiveSession(loaded,null);
+                    InteractiveSession nextSession = new InteractiveSession(loaded,null,diagnostics);
                     SimulationControl nextControl = new SimulationControl(nextSession::tick);
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
@@ -183,7 +183,7 @@ public final class Main {
         private void resetWorld() {
             boolean paused=control.paused();
             var nextWorld=new World(world.width(),world.height(),world.mode());
-            var nextSession=new InteractiveSession(nextWorld,null); var nextControl=new SimulationControl(nextSession::tick);
+            var nextSession=new InteractiveSession(nextWorld,null,diagnostics); var nextControl=new SimulationControl(nextSession::tick);
             var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
             if(paused) nextControl.togglePause();
             session.retire(); world=nextWorld; structural=null; session=nextSession; control=nextControl; renderer=nextRenderer;
@@ -212,7 +212,7 @@ public final class Main {
                 boolean paused = control.paused();
                 var nextWorld=scene.world(); var nextStructural=new StructuralSimulationController(scene);
                 if(next==10) RestingStackFixture.populate(nextStructural.registry());
-                var nextSession=new InteractiveSession(nextWorld,nextStructural,false,next==8 || next==9);
+                var nextSession=new InteractiveSession(nextWorld,nextStructural,diagnostics,next==8 || next==9);
                 if(next==10) { nextSession.physics().synchronize(); nextSession.occupancy().rebuild(nextSession.physics(),0); }
                 if(next>=5 && next<=7) { nextStructural.tick(); nextSession.extractSelected(); }
                 var nextControl=new SimulationControl(nextSession::tick); if(paused) nextControl.togglePause();
@@ -262,7 +262,7 @@ public final class Main {
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 235 : 110);
+            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 275 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);

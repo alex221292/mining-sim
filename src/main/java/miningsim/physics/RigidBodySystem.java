@@ -38,11 +38,14 @@ public final class RigidBodySystem {
         public static InteractionConfig defaults() { return new InteractionConfig(1_000_000, 10_000_000, 1_000_000, 1_000_000, 1_000_000, 3); }
     }
     public record SleepConfig(double linearSpeed, double angularSpeed, int ticks) {
+        public static final double DEFAULT_LINEAR_SPEED_METRES_PER_SECOND = 0.02;
+        public static final double DEFAULT_ANGULAR_SPEED_RADIANS_PER_SECOND = 0.02;
+        public static final int DEFAULT_QUIET_TICKS = 60;
         public SleepConfig {
             if (!Double.isFinite(linearSpeed) || linearSpeed <= 0 || !Double.isFinite(angularSpeed) || angularSpeed <= 0 || ticks < 1)
                 throw new IllegalArgumentException("Invalid sleep configuration");
         }
-        public static SleepConfig defaults() { return new SleepConfig(0.02, 0.02, 60); }
+        public static SleepConfig defaults() { return new SleepConfig(DEFAULT_LINEAR_SPEED_METRES_PER_SECOND, DEFAULT_ANGULAR_SPEED_RADIANS_PER_SECOND, DEFAULT_QUIET_TICKS); }
     }
     public record InteractionDiagnostics(int sharedMicrosteps, long pairs, long overlappingPairs, long checks,
                                          long rawContacts, long reducedContacts, long solverIterations,

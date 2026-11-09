@@ -23,7 +23,7 @@ public final class InteractiveSession {
     private final CoupledSimulationStep coupled;
     private final AutomaticRockDetachment automatic;
     private int selectedX=-1,selectedY=-1;
-    private final boolean instrument;
+    private boolean instrument;
     private long structuralNanos;
     private int failures;
     private String failure;
@@ -55,6 +55,7 @@ public final class InteractiveSession {
             physics=new RigidBodySystem(registry,4,solver,RigidBodySystem.MotionConfig.defaults(),
                     new BodyCollisionQuery(new BodyCollisionQuery.Limits(1000000,10000000,4096,4096)),
                     new BodyContactSolver(BodyContactSolver.Config.defaults()));
+            physics.enableProfiling(instrument);
             occupancy=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults());
             coupled=new CoupledSimulationStep(world,physics,occupancy,CellularDisplacementPlanner.Limits.defaults(),instrument);
             if(autoEnabled) {
@@ -75,6 +76,11 @@ public final class InteractiveSession {
     public boolean blocked() { return blocked; }
     public boolean recovered() { return recovered; }
     public long structuralNanos() { return structuralNanos; }
+    /** Called by the owner thread between ticks. */
+    public void enableProfiling(boolean enabled) {
+        instrument=enabled;
+        if(coupled!=null) { physics.enableProfiling(enabled); coupled.enableProfiling(enabled); }
+    }
     public void resume() { if (!retired) { blocked=false; failures=0; } }
     /** Abandoned sessions must never execute previously queued input again. */
     public void retire() { retired=true; commands.clear(); }

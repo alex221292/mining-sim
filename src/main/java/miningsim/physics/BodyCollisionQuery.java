@@ -24,6 +24,11 @@ public final class BodyCollisionQuery {
 
     /** The caller must provide bodies at the same simulation time. */
     public Result query(List<RigidBody> input) {
+        return query(input,true);
+    }
+    /** Brute-force reference, retained for geometry regression tests. */
+    Result queryBruteForce(List<RigidBody> input) { return query(input,false); }
+    private Result query(List<RigidBody> input,boolean accelerated) {
         var bodies = new ArrayList<>(input); bodies.sort(Comparator.comparingLong(RigidBody::id));
         for (int i = 1; i < bodies.size(); i++)
             if (bodies.get(i - 1).id() == bodies.get(i).id()) throw new IllegalArgumentException("Duplicate body ID");
@@ -37,10 +42,27 @@ public final class BodyCollisionQuery {
             if (ab.maxX() <= bb.minX() || bb.maxX() <= ab.minX() || ab.maxY() <= bb.minY() || bb.maxY() <= ab.minY()) continue;
             overlapping = Math.incrementExact(overlapping);
             var pairContacts = new ArrayList<Contact>();
-            for (var ca : a.fragment().descriptor().cells()) for (var cb : b.fragment().descriptor().cells()) {
+            var bCells=b.fragment().descriptor().cells(); var geometry=b.geometry();
+            double ac=Math.cos(a.angleRadians()),as=Math.sin(a.angleRadians()),bc=Math.cos(b.angleRadians()),bs=Math.sin(b.angleRadians());
+            double radius=0.5*(Math.abs(ac*bc+as*bs)+Math.abs(as*bc-ac*bs))+0.5;
+            for (var ca : a.fragment().descriptor().cells()) {
+                var pa = a.geometry().transform(ca.x() + 0.5, ca.y() + 0.5, a.xCells(), a.yCells(), a.angleRadians());
+                double dx=pa.x()-b.xCells(),dy=pa.y()-b.yCells();
+                double localX=geometry.localCenterX()+bc*dx+bs*dy,localY=geometry.localCenterY()-bs*dx+bc*dy;
+                if(!Double.isFinite(localX) || !Double.isFinite(localY)) throw new IllegalStateException("Non-finite compound candidate geometry");
+                // Conservative rounding margin; SAT remains the authoritative narrow phase.
+                double scale=Math.max(Math.max(Math.abs(pa.x()),Math.abs(pa.y())),Math.max(Math.abs(b.xCells()),Math.abs(b.yCells())));
+                scale=Math.max(scale,Math.max(Math.abs(localX),Math.abs(localY)));
+                double margin=1e-9+32*Math.ulp(Math.max(1,scale));
+                double minX=localX-radius-margin,maxX=localX+radius+margin,minY=localY-radius-margin,maxY=localY+radius+margin;
+                if(!accelerated) { minX=Double.NEGATIVE_INFINITY; maxX=Double.POSITIVE_INFINITY; minY=Double.NEGATIVE_INFINITY; maxY=Double.POSITIVE_INFINITY; }
+                for(int row=geometry.firstRow(minY);row<geometry.rowCount() && geometry.rowY(row)+0.5<=maxY;row++) {
+                    int low=geometry.rowStart(row),high=geometry.rowEnd(row);
+                    while(low<high) { int mid=(low+high)>>>1; if(bCells.get(mid).x()+0.5<minX) low=mid+1; else high=mid; }
+                    for(int ci=low;ci<geometry.rowEnd(row);ci++) {
+                        var cb=bCells.get(ci); if(cb.x()+0.5>maxX) break;
                 checks = Math.incrementExact(checks);
                 if (checks > limits.checks()) throw new IllegalStateException("Body narrow-phase limit exceeded: " + checks + " > " + limits.checks());
-                var pa = a.geometry().transform(ca.x() + 0.5, ca.y() + 0.5, a.xCells(), a.yCells(), a.angleRadians());
                 var pb = b.geometry().transform(cb.x() + 0.5, cb.y() + 0.5, b.xCells(), b.yCells(), b.angleRadians());
                 var hit = SquareCollision.intersect(new SquareCollision.Square(pa.x(), pa.y(), a.angleRadians()),
                         new SquareCollision.Square(pb.x(), pb.y(), b.angleRadians()));
@@ -48,6 +70,8 @@ public final class BodyCollisionQuery {
                 rawCount = Math.incrementExact(rawCount);
                 if (rawCount > limits.rawContacts()) throw new IllegalStateException("Body raw-contact limit exceeded: " + rawCount + " > " + limits.rawContacts());
                 pairContacts.add(new Contact(a.id(), b.id(), hit.normalX(), hit.normalY(), hit.penetrationCells(), hit.pointX(), hit.pointY()));
+                    }
+                }
             }
             // Deterministically group similar normals and keep tangent extremes, not AABB geometry.
             var remaining = new ArrayList<>(pairContacts);

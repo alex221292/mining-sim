@@ -10,10 +10,20 @@ public final class FragmentGeometry {
     public record Bounds(double minX, double minY, double maxX, double maxY) { }
     private final RockFragment fragment;
     private final double localX, localY, massKg, inertiaKgMetresSquared, maxRadiusCells;
+    private final int[] rowY,rowStarts;
 
     public FragmentGeometry(RockFragment fragment) {
         this.fragment = Objects.requireNonNull(fragment);
         var descriptor = fragment.descriptor();
+        var rows=new java.util.ArrayList<Integer>(); var starts=new java.util.ArrayList<Integer>();
+        int previous=-1,index=0;
+        for(var cell:descriptor.cells()) {
+            if(cell.y()!=previous) { previous=cell.y(); rows.add(previous); starts.add(index); }
+            index++;
+        }
+        rowY=rows.stream().mapToInt(Integer::intValue).toArray(); rowStarts=new int[starts.size()+1];
+        for(int i=0;i<starts.size();i++) rowStarts[i]=starts.get(i);
+        rowStarts[starts.size()]=descriptor.cellCount();
         double x = 0, y = 0;
         for (var cell : descriptor.cells()) { x += cell.x() + 0.5; y += cell.y() + 0.5; }
         localX = x / descriptor.cellCount(); localY = y / descriptor.cellCount();
@@ -39,6 +49,15 @@ public final class FragmentGeometry {
     public double massKg() { return massKg; }
     public double inertiaKgMetresSquared() { return inertiaKgMetresSquared; }
     public double maxRadiusCells() { return maxRadiusCells; }
+    int rowCount() { return rowY.length; }
+    int rowY(int row) { return rowY[row]; }
+    int rowStart(int row) { return rowStarts[row]; }
+    int rowEnd(int row) { return rowStarts[row+1]; }
+    int firstRow(double minCenterY) {
+        int low=0,high=rowY.length;
+        while(low<high) { int middle=(low+high)>>>1; if(rowY[middle]+0.5<minCenterY) low=middle+1; else high=middle; }
+        return low;
+    }
     public Point initialCenter() { return new Point(fragment.originX() + localX, fragment.originY() + localY); }
 
     /** Positive angles rotate clockwise in the downward-positive world coordinate system. */

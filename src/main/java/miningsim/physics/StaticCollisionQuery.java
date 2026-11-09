@@ -49,6 +49,10 @@ public final class StaticCollisionQuery {
 
     /** Row-major world candidates followed by the descriptor's deterministic cell order. */
     public Result query(RigidBody body) {
+        return query(body,true);
+    }
+    Result queryBruteForce(RigidBody body) { return query(body,false); }
+    private Result query(RigidBody body,boolean accelerated) {
         Objects.requireNonNull(body);
         var bounds = body.geometry().bounds(body.xCells(), body.yCells(), body.angleRadians());
         int left = clampFloor(bounds.minX(), world.width());
@@ -59,10 +63,25 @@ public final class StaticCollisionQuery {
         if (candidates > maxCandidates) throw new IllegalStateException("Static collision candidate limit exceeded");
         long checks = 0;
         var contacts = new ArrayList<Contact>();
+        var geometry=body.geometry(); var cells=body.fragment().descriptor().cells();
+        double cos=Math.cos(body.angleRadians()),sin=Math.sin(body.angleRadians());
+        double radius=.5*(Math.abs(cos)+Math.abs(sin))+.5;
         for (int y = top; y < bottom; y++) for (int x = left; x < right; x++) {
             if (!isSolid(world.get(x, y))) continue;
             var fixed = new SquareCollision.Square(x + 0.5, y + 0.5, 0);
-            for (var cell : body.fragment().descriptor().cells()) {
+            double dx=x+.5-body.xCells(),dy=y+.5-body.yCells();
+            double localX=geometry.localCenterX()+cos*dx+sin*dy,localY=geometry.localCenterY()-sin*dx+cos*dy;
+            if(!Double.isFinite(localX) || !Double.isFinite(localY)) throw new IllegalStateException("Non-finite static candidate geometry");
+            double scale=Math.max(Math.max(Math.abs(body.xCells()),Math.abs(body.yCells())),Math.max(x+1.0,y+1.0));
+            scale=Math.max(scale,Math.max(Math.abs(localX),Math.abs(localY)));
+            double margin=1e-9+32*Math.ulp(Math.max(1,scale));
+            double minX=localX-radius-margin,maxX=localX+radius+margin,minY=localY-radius-margin,maxY=localY+radius+margin;
+            if(!accelerated) { minX=Double.NEGATIVE_INFINITY; maxX=Double.POSITIVE_INFINITY; minY=Double.NEGATIVE_INFINITY; maxY=Double.POSITIVE_INFINITY; }
+            for(int row=geometry.firstRow(minY);row<geometry.rowCount() && geometry.rowY(row)+.5<=maxY;row++) {
+                int low=geometry.rowStart(row),high=geometry.rowEnd(row);
+                while(low<high) { int mid=(low+high)>>>1; if(cells.get(mid).x()+.5<minX) low=mid+1; else high=mid; }
+                for(int ci=low;ci<geometry.rowEnd(row);ci++) {
+                var cell=cells.get(ci); if(cell.x()+.5>maxX) break;
                 checks = Math.incrementExact(checks);
                 if (checks > maxChecks) throw new IllegalStateException("Static collision narrow-phase limit exceeded");
                 var center = body.geometry().transform(cell.x() + 0.5, cell.y() + 0.5,
@@ -84,6 +103,7 @@ public final class StaticCollisionQuery {
                     contacts.add(new Contact(body.id(), cell, x, y, nx, ny, depth, hit.pointX(), hit.pointY(), Boundary.NONE));
                 }
                 if (contacts.size() > 1000) throw new IllegalStateException("Static contact reduction limit exceeded");
+                }
             }
         }
         for (var cell : body.fragment().descriptor().cells()) {
