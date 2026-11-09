@@ -21,6 +21,7 @@ public final class FragmentRegistry {
             this.expectedRevision=expectedRevision; this.nextRevision=nextRevision;
         }
         public boolean valid() { return fragments == expected && revision == expectedRevision; }
+        public boolean belongsTo(FragmentRegistry registry) { return FragmentRegistry.this==registry; }
         public RockFragment fragment() { return fragment; }
         /** Only after valid() under the single-threaded, non-reentrant ownership contract. */
         public void publish() {

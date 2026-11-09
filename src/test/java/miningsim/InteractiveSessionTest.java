@@ -58,7 +58,9 @@ class InteractiveSessionTest {
         var body=session.physics().body(1); body.setVelocity(Double.MAX_VALUE,0,0); var snapshot=session.occupancy().snapshot();
         double y=body.yCells(); session.tick(); assertSame(snapshot,session.occupancy().snapshot()); assertEquals(y,body.yCells());
         assertEquals(0,session.coupled().diagnostics().ticks()); assertNotNull(session.failure());
-        session.tick(); session.tick(); assertTrue(session.blocked()); session.resume(); assertFalse(session.blocked());
+        session.tick(); session.tick(); assertTrue(session.blocked());
+        body.setVelocity(0,0,0); session.resume(); assertFalse(session.blocked()); session.tick();
+        assertNull(session.failure()); assertTrue(session.recovered()); assertEquals(1,session.coupled().diagnostics().ticks());
         var other=RockReferenceScenes.island(); var next=new InteractiveSession(other.world(),new StructuralSimulationController(other));
         assertNotSame(session.world(),next.world()); assertTrue(next.physics().bodies().isEmpty());
         var legacy=new InteractiveSession(new World(5,5),null); assertFalse(legacy.isCoupled()); legacy.tick();
@@ -102,5 +104,39 @@ class InteractiveSessionTest {
         structural.tick(); assertEquals(ExtractionCommit.Status.COMMITTED,session.extractSelected());
         assertEquals(ExtractionCommit.Status.INVALID,session.extractSelected());
         assertEquals(1,structural.registry().size()); assertEquals(1,session.physics().bodies().size());
+    }
+    @Test void retiredSessionDiscardsQueuedAndLateCommands() {
+        var scene=RockReferenceScenes.interactive("old",Material.AIR);
+        var old=new InteractiveSession(scene.world(),new StructuralSimulationController(scene));
+        long revision=scene.world().mutationRevision();
+        old.enqueue(()->scene.world().set(1,1,Material.SAND)); old.retire();
+        old.enqueue(()->scene.world().set(2,1,Material.WATER)); old.tick();
+        assertEquals(revision,scene.world().mutationRevision());
+        assertEquals(Material.AIR,scene.world().get(1,1)); assertEquals(Material.AIR,scene.world().get(2,1));
+    }
+    @Test void renderingAndLongDiagnosticsNeverAdvanceState() {
+        var scene=RockReferenceScenes.interactive("render",Material.AIR); var structural=new StructuralSimulationController(scene);
+        var session=new InteractiveSession(scene.world(),structural); structural.tick(); assertEquals(ExtractionCommit.Status.COMMITTED,session.extractSelected());
+        session.physics().body(1).setVelocity(Double.MAX_VALUE,0,0); session.tick();
+        long worldRevision=scene.world().mutationRevision(), occupancyRevision=session.occupancy().snapshot().diagnostics().revision();
+        double x=session.physics().body(1).xCells(), y=session.physics().body(1).yCells();
+        var camera=new Camera2D(); camera.zoomAt(16,40,30); camera.pan(12,3);
+        var image=new BufferedImage(80,80,BufferedImage.TYPE_INT_RGB); var graphics=image.createGraphics();
+        FragmentOverlay.renderBodies(graphics,camera,session.physics().bodies());
+        miningsim.render.CoupledDiagnosticsOverlay.render(graphics,session); graphics.dispose();
+        assertEquals(worldRevision,scene.world().mutationRevision()); assertEquals(occupancyRevision,session.occupancy().snapshot().diagnostics().revision());
+        assertEquals(x,session.physics().body(1).xCells()); assertEquals(y,session.physics().body(1).yCells());
+    }
+    @Test void overlappingBodyRenderingIsOrderIndependentAndClipped() {
+        var registry=new FragmentRegistry(2); var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0)));
+        registry.insert(shape,0,0,0); registry.insert(shape,0,0,0); var physics=new RigidBodySystem(registry); physics.synchronize();
+        var camera=new Camera2D(); camera.zoomAt(16,0,0); camera.pan(.5,.5);
+        var first=new BufferedImage(30,30,BufferedImage.TYPE_INT_RGB); var second=new BufferedImage(30,30,BufferedImage.TYPE_INT_RGB);
+        var a=first.createGraphics(); var b=second.createGraphics();
+        FragmentOverlay.renderBodies(a,camera,physics.bodies());
+        FragmentOverlay.renderBodies(b,camera,physics.bodies().reversed()); a.dispose(); b.dispose();
+        assertEquals(0x808890,first.getRGB(0,0)&0xffffff);
+        assertArrayEquals(first.getRGB(0,0,30,30,null,0,30),second.getRGB(0,0,30,30,null,0,30));
+        assertEquals(2,physics.bodies().size()); assertEquals(5_000_000,registry.totalMassMilligrams());
     }
 }

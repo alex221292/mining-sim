@@ -10,6 +10,9 @@ import miningsim.world.World;
 
 /** Explicit single-owner build-then-publish occupancy cache; never owns or mutates bodies. */
 public final class RigidBodyOccupancyIndex {
+    public static final class BudgetException extends IllegalStateException {
+        public BudgetException(String message) { super(message); }
+    }
     /** Positive intersection polygon area in square cells must exceed this tolerance. */
     public static final double AREA_EPSILON = 1e-10;
     public record Limits(int bodies, long fragmentCells, long candidates, long areaChecks,
@@ -58,6 +61,7 @@ public final class RigidBodyOccupancyIndex {
         }
     }
     private final int width,height;
+    private final World world;
     private final Limits limits;
     private Snapshot snapshot;
     /** Prepared against one published snapshot; no allocation is needed for publication. */
@@ -65,6 +69,7 @@ public final class RigidBodyOccupancyIndex {
         private final Snapshot expected, next;
         private Prepared(Snapshot expected, Snapshot next) { this.expected=expected; this.next=next; }
         public Snapshot snapshot() { return next; }
+        public boolean owns(World candidate) { return RigidBodyOccupancyIndex.this.owns(candidate); }
         public boolean valid() { return snapshot == expected; }
         public void publish() {
             if (!valid()) throw new IllegalStateException("Occupancy publication is stale");
@@ -72,10 +77,11 @@ public final class RigidBodyOccupancyIndex {
         }
     }
     public RigidBodyOccupancyIndex(World world, Limits limits) {
-        Objects.requireNonNull(world); this.width=world.width(); this.height=world.height(); this.limits=Objects.requireNonNull(limits);
+        this.world=Objects.requireNonNull(world); this.width=world.width(); this.height=world.height(); this.limits=Objects.requireNonNull(limits);
         snapshot=new Snapshot(width,height,new long[0],new int[]{0},new long[0],new Diagnostics(0,0,0,0,0,0,0,0,0,0,0));
     }
     public Snapshot snapshot() { return snapshot; }
+    public boolean owns(World candidate) { return world==candidate; }
     public Snapshot rebuild(RigidBodySystem system,long generation) { return rebuild(Objects.requireNonNull(system).bodies(),generation); }
     /** The body list and transforms must not change concurrently with this single-owner call. */
     public Snapshot rebuild(List<RigidBody> input,long generation) {
@@ -133,7 +139,7 @@ public final class RigidBodyOccupancyIndex {
         var next=new Snapshot(width,height,keys,offsets,ids,stats); return new Prepared(snapshot,next);
     }
     private static IllegalStateException failure(String name,long requested,long allowed) {
-        return new IllegalStateException("Occupancy "+name+" limit exceeded: "+requested+" > "+allowed);
+        return new BudgetException("Occupancy "+name+" limit exceeded: "+requested+" > "+allowed);
     }
     /** Clip a transformed square to the candidate cell in local coordinates, then use shoelace area. */
     static double intersectionArea(double[] px,double[] py,long cellX,long cellY) {

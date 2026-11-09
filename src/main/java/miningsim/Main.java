@@ -167,7 +167,7 @@ public final class Main {
                     SimulationControl nextControl = new SimulationControl(nextSession::tick);
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
-                    world = loaded; session=nextSession; control = nextControl; renderer = nextRenderer;
+                    session.retire(); world = loaded; session=nextSession; control = nextControl; renderer = nextRenderer;
                     structural = null; sceneIndex = -1; sceneName = "";
                     camera.reset();
                 }
@@ -181,10 +181,12 @@ public final class Main {
 
         private void resetWorld() {
             boolean paused=control.paused();
-            world=new World(world.width(),world.height(),world.mode()); structural=null;
-            session=new InteractiveSession(world,null); control=new SimulationControl(session::tick);
-            if(paused) control.togglePause();
-            renderer=new Java2DRenderer(world.width(),world.height()); sceneIndex=-1; sceneName="";
+            var nextWorld=new World(world.width(),world.height(),world.mode());
+            var nextSession=new InteractiveSession(nextWorld,null); var nextControl=new SimulationControl(nextSession::tick);
+            var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
+            if(paused) nextControl.togglePause();
+            session.retire(); world=nextWorld; structural=null; session=nextSession; control=nextControl; renderer=nextRenderer;
+            sceneIndex=-1; sceneName="";
         }
 
         private void chooseReferenceScene() {
@@ -204,12 +206,13 @@ public final class Main {
                     default -> RockReferenceScenes.interactive("rock and water",Material.WATER);
                 };
                 boolean paused = control.paused();
-                world = scene.world(); structural = new StructuralSimulationController(scene);
-                session = new InteractiveSession(world,structural);
-                if(next>=5) { structural.tick(); session.extractSelected(); }
-                control = new SimulationControl(session::tick);
-                if (paused) control.togglePause();
-                renderer = new Java2DRenderer(world.width(),world.height()); sceneIndex = next; sceneName = scene.name();
+                var nextWorld=scene.world(); var nextStructural=new StructuralSimulationController(scene);
+                var nextSession=new InteractiveSession(nextWorld,nextStructural);
+                if(next>=5) { nextStructural.tick(); nextSession.extractSelected(); }
+                var nextControl=new SimulationControl(nextSession::tick); if(paused) nextControl.togglePause();
+                var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
+                session.retire(); world=nextWorld; structural=nextStructural; session=nextSession; control=nextControl; renderer=nextRenderer;
+                sceneIndex = next; sceneName = scene.name();
                 camera.reset(); camera.zoomAt(Camera2D.MAX_ZOOM,0,0);
                 camera.pan(-Math.max(0,(getWidth()/camera.zoom()-world.width())/2), -Math.max(0,(getHeight()/camera.zoom()-world.height())/2));
             } finally { previous=System.nanoTime(); accumulator=0; timer.start(); requestFocusInWindow(); repaint(); }

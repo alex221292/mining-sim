@@ -1,5 +1,7 @@
 # M4.4b.4c — interactive rigid fragments
 
+For the subsequent extraction-publication and session-retirement hardening, see `m4-4b4d-integration-hardening.md`.
+
 The Swing event-dispatch thread owns input, the fixed 60 TPS accumulator, simulation, registry, occupancy and painting. No physics or occupancy rebuild occurs during painting. Each session owns one World, Simulation, optional structural controller/registry, RigidBodySystem, occupancy index and CoupledSimulationStep. BEDROCK_ENABLED sessions use coupling; MSIM v1 always loads LEGACY and retains cellular-only behavior. MSIM v1 cannot save bedrock worlds or fragments. Replacing a world with F4, loading or clearing with C creates fresh owners; C discards the current scene and its fragments. Pause is preserved on replacement.
 
 Input edits and F5 selection/extraction commands are queued on the EDT and applied before the next tick; while paused use N to process them. The order is commands, bounded structural tick, tentative coupled physics/occupancy/displacement commit, then separate cellular movement. This differs from the previous structural-reference order (cells before structure). Rendering reads only committed state on the same thread. An expected coupled `IllegalStateException` skips the cellular phase and is shown in F3; three identical failures pause coupling only, without stopping camera/input. F6 retries; Space pauses the whole tick and N steps while paused. A cellular-phase exception remains unexpected and is not disguised as a rolled-back coupled tick.

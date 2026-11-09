@@ -16,6 +16,7 @@ public final class CoupledDiagnosticsOverlay {
                 d.sand(),d.gravel(),d.soil(),d.water(),d.cellularOutcome(),session.physics().motionDiagnostics().executedMicrosteps()),8,152);
         String message=session.failure()!=null?session.failure():session.structural()!=null?session.structural().extractionMessage():"";
         if(message.length()>100) message=message.substring(0,97)+"...";
-        g.drawString((session.blocked()?"PAUSED: ":"")+message,8,169);
+        String state=session.blocked()?"BLOCKED: ":session.failure()!=null?"RETRYING: ":session.recovered()?"RECOVERED: ":"RUNNING: ";
+        g.drawString(state+message,8,169);
     }
 }

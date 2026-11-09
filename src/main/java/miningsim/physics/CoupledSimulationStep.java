@@ -43,8 +43,7 @@ public final class CoupledSimulationStep {
         this.occupancy=Objects.requireNonNull(occupancy); this.limits=Objects.requireNonNull(limits);
         this.instrument=instrument;
         if(!physics.coupledTo(world)) throw new IllegalArgumentException("Physics must use coupled static policy and the same world");
-        if(occupancy.snapshot().width()!=world.width() || occupancy.snapshot().height()!=world.height())
-            throw new IllegalArgumentException("Occupancy dimensions do not match world");
+        if(!occupancy.owns(world)) throw new IllegalArgumentException("Occupancy belongs to a different world");
     }
     public Diagnostics diagnostics() { return diagnostics; }
     public String lastFailure() { return lastFailure; }

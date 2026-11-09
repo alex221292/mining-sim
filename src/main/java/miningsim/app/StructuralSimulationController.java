@@ -44,13 +44,21 @@ public final class StructuralSimulationController {
     public String extractionMessage() { return extractionMessage; }
     /** Explicit command; unsupported status must already have been presented on an earlier tick. */
     public ExtractionCommit.Status extractSelected() {
-        if (!view().status().equals("UNSUPPORTED")) { extractionMessage="Select an analyzed unsupported component"; return ExtractionCommit.Status.INVALID; }
-        var result = ExtractionPlanner.prepare(world,connectivity,selectedX,selectedY,64);
-        if (result.status() != ExtractionPlanner.Status.READY) { extractionMessage="Extraction: "+result.status()+" (limit 64 cells)"; return ExtractionCommit.Status.INVALID; }
+        var result=prepareSelected();
+        if(result==null) return ExtractionCommit.Status.INVALID;
         var status=ExtractionCommit.commit(result.plan(),fragments).status();
-        extractionMessage="Extraction: "+status;
+        recordExtraction(status);
         return status;
     }
+    public ExtractionPlanner.Result prepareSelected() {
+        if (view().status().equals("TOO_LARGE")) { extractionMessage="Extraction: TOO_LARGE (limit 64 cells)"; return null; }
+        if (!view().status().equals("UNSUPPORTED")) { extractionMessage="Select an analyzed unsupported component"; return null; }
+        var result = ExtractionPlanner.prepare(world,connectivity,selectedX,selectedY,64);
+        if (result.status() != ExtractionPlanner.Status.READY) { extractionMessage="Extraction: "+result.status()+" (limit 64 cells)"; return null; }
+        return result;
+    }
+    public void recordExtraction(ExtractionCommit.Status status) { extractionMessage="Extraction: "+status; }
+    public void recordExtractionFailure(String reason) { extractionMessage="Extraction: "+reason; }
     public void select(int x, int y) {
         if (world.contains(x,y) && world.get(x,y) == Material.STONE) {
             selectedX = x; selectedY = y; analyzedComponent = -1;

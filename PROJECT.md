@@ -141,6 +141,8 @@ M4.3c connects the small selected-component rock reference scenes to Swing diagn
 
 M4.4b.4c adds fixed-tick interactive rigid fragments, occupancy-aware painting and coupled demonstration scenes. See `docs/m4-4b4c-rendering-controls.md` for ownership, controls, measured headless performance and limitations; desktop GUI verification remains outstanding.
 
+M4.4b.4d hardens interactive extraction publication, session retirement and deterministic replay; measured limits and remaining GUI/physics limitations are documented in `docs/m4-4b4d-integration-hardening.md`. Automatic detachment is not implemented.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.

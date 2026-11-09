@@ -69,7 +69,16 @@ public final class RigidBodySystem {
     private long observedWorldRevision = -1;
     private java.util.Set<Long> lastSuccessfulBodyIds = java.util.Set.of();
     private StaticContactSolver.Diagnostics diagnostics = new StaticContactSolver.Diagnostics(0, 0, 0, 0, 0, 0);
-    private final TreeMap<Long, RigidBody> bodies = new TreeMap<>();
+    private TreeMap<Long, RigidBody> bodies = new TreeMap<>();
+
+    /** Preallocated interactive membership, published only inside the World extraction batch. */
+    public final class PreparedMembership {
+        private final TreeMap<Long,RigidBody> expected,next;
+        private PreparedMembership(TreeMap<Long,RigidBody> expected,TreeMap<Long,RigidBody> next) { this.expected=expected; this.next=next; }
+        public boolean valid() { return bodies==expected; }
+        public void publish() { if(!valid()) throw new IllegalStateException("Physics membership changed"); bodies=next; }
+        private List<RigidBody> bodies() { return List.copyOf(next.values()); }
+    }
 
     /** Private-to-package checkpoint for the single-owner coupled commit. */
     final class CoupledCheckpoint {
@@ -94,6 +103,24 @@ public final class RigidBodySystem {
     }
     CoupledCheckpoint coupledCheckpoint() { return new CoupledCheckpoint(); }
     boolean coupledTo(miningsim.world.World world) { return solver != null && solver.coupledTo(world); }
+
+    /** Single-owner interactive extraction: prepare body and occupancy before World ownership transfer. */
+    public miningsim.fragment.ExtractionCommit.Result extract(miningsim.fragment.ExtractionPlanner.Plan plan,
+                                                               RigidBodyOccupancyIndex occupancy,long generation) {
+        Objects.requireNonNull(plan); Objects.requireNonNull(occupancy);
+        if(!coupledTo(plan.sourceWorld()) || !occupancy.owns(plan.sourceWorld())) throw new IllegalArgumentException("Extraction world mismatch");
+        if(registry.size()>=registry.capacity()) return new miningsim.fragment.ExtractionCommit.Result(miningsim.fragment.ExtractionCommit.Status.CAPACITY,null);
+        FragmentRegistry.Prepared prepared;
+        try { prepared=registry.prepare(plan.descriptor(),plan.originX(),plan.originY(),plan.componentId()); }
+        catch(ArithmeticException ex) { return new miningsim.fragment.ExtractionCommit.Result(miningsim.fragment.ExtractionCommit.Status.OVERFLOW,null); }
+        var next=new TreeMap<Long,RigidBody>();
+        for(var fragment:registry.snapshot()) next.put(fragment.id(),bodies.containsKey(fragment.id())?bodies.get(fragment.id()):new RigidBody(fragment));
+        var body=new RigidBody(prepared.fragment());
+        if(next.putIfAbsent(body.id(),body)!=null) throw new IllegalStateException("Duplicate extraction body ID");
+        var membership=new PreparedMembership(bodies,next);
+        var snapshot=occupancy.prepare(membership.bodies(),generation);
+        return miningsim.fragment.ExtractionCommit.commit(plan,registry,prepared,snapshot,membership);
+    }
 
     public RigidBodySystem(FragmentRegistry registry) { this(registry, 4); }
     public RigidBodySystem(FragmentRegistry registry, int substeps) {

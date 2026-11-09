@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import miningsim.fragment.FragmentRegistry;
 import miningsim.physics.RigidBodyOccupancyIndex;
+import miningsim.physics.RigidBodySystem;
 
 public final class World {
     public enum Mode { LEGACY, BEDROCK_ENABLED }
@@ -119,11 +120,21 @@ public final class World {
     public BatchResult replaceAllAndPublishOccupancy(List<CellChange> changes, RigidBodyOccupancyIndex.Prepared occupancy) {
         return replaceAllIfMatches(changes,null,Objects.requireNonNull(occupancy));
     }
+    /** Extraction transfers registry ownership and publishes its prepared geometry in the same batch. */
+    public BatchResult replaceAllAndPublishExtraction(List<CellChange> changes, FragmentRegistry.Prepared fragment,
+                                                       RigidBodyOccupancyIndex.Prepared occupancy,RigidBodySystem.PreparedMembership membership) {
+        return replaceAllIfMatches(changes,Objects.requireNonNull(fragment),Objects.requireNonNull(occupancy),Objects.requireNonNull(membership));
+    }
     private BatchResult replaceAllIfMatches(List<CellChange> changes, FragmentRegistry.Prepared prepared, RigidBodyOccupancyIndex.Prepared occupancy) {
+        return replaceAllIfMatches(changes,prepared,occupancy,null);
+    }
+    private BatchResult replaceAllIfMatches(List<CellChange> changes, FragmentRegistry.Prepared prepared, RigidBodyOccupancyIndex.Prepared occupancy,
+                                            RigidBodySystem.PreparedMembership membership) {
         Objects.requireNonNull(changes);
         if (changeSink != null && !changeSink.allowBatch()) return BatchResult.REJECTED;
         if (prepared != null && !prepared.valid()) return BatchResult.REJECTED;
         if (occupancy != null && !occupancy.valid()) return BatchResult.REJECTED;
+        if (membership != null && !membership.valid()) return BatchResult.REJECTED;
         ArrayList<CellChange> sorted = new ArrayList<>(changes);
         if (sorted.stream().anyMatch(Objects::isNull)) return BatchResult.REJECTED;
         sorted.sort(Comparator.comparingInt(CellChange::y).thenComparingInt(CellChange::x));
@@ -166,6 +177,7 @@ public final class World {
         // No external code runs between preflight and this allocation-free single-owner publication.
         if (prepared != null) prepared.publish();
         if (occupancy != null) occupancy.publish();
+        if (membership != null) membership.publish();
         if (changeSink != null) changeSink.changedBatch(notification);
         return BatchResult.CHANGED;
     }
