@@ -38,11 +38,14 @@ public final class RigidBody {
         sleeping = state.sleeping(); sleepTicks = state.sleepTicks();
     }
     void wake() { sleeping = false; sleepTicks = 0; }
-    void updateSleep(boolean supported, RigidBodySystem.SleepConfig config) {
-        if (sleeping) return;
-        if (supported && Math.hypot(velocityX, velocityY) < config.linearSpeed() && Math.abs(angularVelocity) < config.angularSpeed()) {
-            if (++sleepTicks >= config.ticks()) { sleeping = true; velocityX = velocityY = angularVelocity = 0; }
-        } else sleepTicks = 0;
+    boolean sleepEligible(boolean supported,RigidBodySystem.SleepConfig config) {
+        return supported && Math.hypot(velocityX,velocityY)<config.linearSpeed() && Math.abs(angularVelocity)<config.angularSpeed();
+    }
+    void updateIslandSleep(boolean eligible,int minimumTicks,RigidBodySystem.SleepConfig config) {
+        if(sleeping) return;
+        if(!eligible) { sleepTicks=0; return; }
+        sleepTicks=minimumTicks+1;
+        if(sleepTicks>=config.ticks()) { sleeping=true; velocityX=velocityY=angularVelocity=0; }
     }
     void translate(double dx, double dy) {
         double nx = x + dx, ny = y + dy;

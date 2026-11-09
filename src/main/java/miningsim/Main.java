@@ -33,6 +33,7 @@ import miningsim.render.CrackOverlay;
 import miningsim.render.FragmentOverlay;
 import miningsim.render.CoupledDiagnosticsOverlay;
 import miningsim.structural.RockReferenceScenes;
+import miningsim.structural.RestingStackFixture;
 import miningsim.render.Java2DRenderer;
 import miningsim.render.Renderer;
 import miningsim.persistence.WorldIO;
@@ -194,7 +195,7 @@ public final class Main {
             try {
                 if (JOptionPane.showConfirmDialog(this, "Replace current world with a reference scene? Unsaved work will be lost.",
                         "Reference scene", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
-                int next = (sceneIndex + 1) % 10;
+                int next = (sceneIndex + 1) % 11;
                 var scene = switch (next) {
                     case 0 -> RockReferenceScenes.roof("short",4,1);
                     case 1 -> RockReferenceScenes.roof("long",12,1);
@@ -205,11 +206,14 @@ public final class Main {
                     case 6 -> RockReferenceScenes.interactive("rock and sand",Material.SAND);
                     case 7 -> RockReferenceScenes.interactive("rock and water",Material.WATER);
                     case 8 -> RockReferenceScenes.cantilever(12);
-                    default -> RockReferenceScenes.oversizedDetachment();
+                    case 9 -> RockReferenceScenes.oversizedDetachment();
+                    default -> RestingStackFixture.scene();
                 };
                 boolean paused = control.paused();
                 var nextWorld=scene.world(); var nextStructural=new StructuralSimulationController(scene);
-                var nextSession=new InteractiveSession(nextWorld,nextStructural,false,next>=8);
+                if(next==10) RestingStackFixture.populate(nextStructural.registry());
+                var nextSession=new InteractiveSession(nextWorld,nextStructural,false,next==8 || next==9);
+                if(next==10) { nextSession.physics().synchronize(); nextSession.occupancy().rebuild(nextSession.physics(),0); }
                 if(next>=5 && next<=7) { nextStructural.tick(); nextSession.extractSelected(); }
                 var nextControl=new SimulationControl(nextSession::tick); if(paused) nextControl.togglePause();
                 var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
@@ -217,6 +221,7 @@ public final class Main {
                 sceneIndex = next; sceneName = scene.name();
                 camera.reset(); camera.zoomAt(Camera2D.MAX_ZOOM,0,0);
                 camera.pan(-Math.max(0,(getWidth()/camera.zoom()-world.width())/2), -Math.max(0,(getHeight()/camera.zoom()-world.height())/2));
+                if(next==10) camera.pan(0,Math.max(0,world.height()-getHeight()/camera.zoom()));
             } finally { previous=System.nanoTime(); accumulator=0; timer.start(); requestFocusInWindow(); repaint(); }
         }
 

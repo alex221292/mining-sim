@@ -64,18 +64,28 @@ public final class StaticContactSolver {
     private final StaticCollisionQuery query;
     private final Config config;
     private long candidates, checks, contacts, iterations;
+    private boolean profiling;
+    private long queryNanos,solverNanos;
+    private double maxPenetration;
     record CounterState(long candidates, long checks, long contacts, long iterations) { }
     public StaticContactSolver(StaticCollisionQuery query, Config config) {
         this.query = Objects.requireNonNull(query); this.config = Objects.requireNonNull(config);
     }
-    void resetDiagnostics() { candidates = checks = contacts = iterations = 0; }
+    void resetDiagnostics() { candidates = checks = contacts = iterations = 0; queryNanos=solverNanos=0; maxPenetration=0; }
+    void profiling(boolean enabled) { profiling=enabled; }
+    long queryNanos() { return queryNanos; }
+    long solverNanos() { return solverNanos; }
+    double maxPenetration() { return maxPenetration; }
     CounterState counterState() { return new CounterState(candidates, checks, contacts, iterations); }
     void restoreCounters(CounterState state) {
         candidates = state.candidates(); checks = state.checks(); contacts = state.contacts(); iterations = state.iterations();
     }
     Diagnostics diagnostics(double maxDisplacement, double maxAngle) { return new Diagnostics(candidates, checks, contacts, iterations, maxDisplacement, maxAngle); }
     private List<StaticCollisionQuery.Contact> query(RigidBody body) {
+        long start=profiling?System.nanoTime():0;
         var result = query.query(body);
+        if(profiling) queryNanos+=System.nanoTime()-start;
+        if(profiling) for(var contact:result.contacts()) maxPenetration=Math.max(maxPenetration,contact.penetrationCells());
         candidates = Math.addExact(candidates, result.candidates()); checks = Math.addExact(checks, result.narrowPhaseChecks());
         contacts = Math.addExact(contacts, result.contacts().size());
         return result.contacts();
@@ -88,7 +98,9 @@ public final class StaticContactSolver {
             for (var c : query(body)) constraints.add(new Constraint(body, c, config));
         }
         void iterate() {
+            long start=profiling?System.nanoTime():0;
             for (var constraint : constraints) constraint.solve(body, config);
+            if(profiling) solverNanos+=System.nanoTime()-start;
             if (!constraints.isEmpty()) iterations = Math.addExact(iterations, 1);
         }
     }
@@ -101,13 +113,14 @@ public final class StaticContactSolver {
         for (var contact : query(body)) if (contact.normalY() > 0.5) return true;
         return false;
     }
-    void correctPosition(RigidBody body) {
+    double correctPosition(RigidBody body) {
         var current = query(body);
         StaticCollisionQuery.Contact deepest = null;
         for (var c : current) if (deepest == null || c.penetrationCells() > deepest.penetrationCells()) deepest = c;
-        if (deepest == null || deepest.penetrationCells() <= config.slopCells()) return;
+        if (deepest == null || deepest.penetrationCells() <= config.slopCells()) return 0;
         double correction = Math.min(0.2, config.correctionFactor() * (deepest.penetrationCells() - config.slopCells()));
         body.translate(-deepest.normalX() * correction, -deepest.normalY() * correction);
+        return correction;
     }
     void solve(RigidBody body) {
         var constraints = new ArrayList<Constraint>();

@@ -145,6 +145,8 @@ M4.4b.4d hardens interactive extraction publication, session retirement and dete
 
 M4.5a adds bounded automatic detachment of unsupported STONE in the ordinary bedrock sandbox. The support rule, paint grouping, 1,024-cell reference limit and performance are documented in `docs/m4-5a-auto-rock-detachment.md`.
 
+M4.5a.1 coordinates sleeping across contact islands and avoids redundant sleeping-stack queries. Headless before/after measurements and remaining contact and GUI limitations are in `docs/m4-5a1-contact-stability.md`.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.
