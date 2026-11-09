@@ -141,7 +141,9 @@ M4.3c connects the small selected-component rock reference scenes to Swing diagn
 
 M4.4b.4c adds fixed-tick interactive rigid fragments, occupancy-aware painting and coupled demonstration scenes. See `docs/m4-4b4c-rendering-controls.md` for ownership, controls, measured headless performance and limitations; desktop GUI verification remains outstanding.
 
-M4.4b.4d hardens interactive extraction publication, session retirement and deterministic replay; measured limits and remaining GUI/physics limitations are documented in `docs/m4-4b4d-integration-hardening.md`. Automatic detachment is not implemented.
+M4.4b.4d hardens interactive extraction publication, session retirement and deterministic replay; measured limits and remaining GUI/physics limitations are documented in `docs/m4-4b4d-integration-hardening.md`. Automatic detachment was not part of that milestone.
+
+M4.5a adds bounded automatic detachment of unsupported STONE in the ordinary bedrock sandbox. The support rule, paint grouping, 1,024-cell reference limit and performance are documented in `docs/m4-5a-auto-rock-detachment.md`.
 
 ### M5 — Better graphics
 

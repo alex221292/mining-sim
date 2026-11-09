@@ -120,6 +120,13 @@ tasks.register('integrationHardeningBenchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+tasks.register('automaticRockBenchmark', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.AutomaticRockBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
 tasks.register('activityBenchmark', JavaExec) {
     group = 'verification'
     description = 'Compares full-grid and experimental activity traversal.'

@@ -35,6 +35,7 @@ public final class FragmentRegistry {
     }
     public int size() { return fragments.size(); }
     public int capacity() { return capacity; }
+    public long revision() { return revision; }
     public long totalMassMilligrams() { return mass; }
     public List<RockFragment> snapshot() { return List.copyOf(fragments); }
     /** Adds a new stationary fragment, or throws without modifying this registry. */

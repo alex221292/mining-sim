@@ -70,6 +70,7 @@ public final class RigidBodySystem {
     private java.util.Set<Long> lastSuccessfulBodyIds = java.util.Set.of();
     private StaticContactSolver.Diagnostics diagnostics = new StaticContactSolver.Diagnostics(0, 0, 0, 0, 0, 0);
     private TreeMap<Long, RigidBody> bodies = new TreeMap<>();
+    private long extractionCommitNanos;
 
     /** Preallocated interactive membership, published only inside the World extraction batch. */
     public final class PreparedMembership {
@@ -107,6 +108,12 @@ public final class RigidBodySystem {
     /** Single-owner interactive extraction: prepare body and occupancy before World ownership transfer. */
     public miningsim.fragment.ExtractionCommit.Result extract(miningsim.fragment.ExtractionPlanner.Plan plan,
                                                                RigidBodyOccupancyIndex occupancy,long generation) {
+        return extract(plan,occupancy,generation,false);
+    }
+    public long extractionCommitNanos() { return extractionCommitNanos; }
+    public miningsim.fragment.ExtractionCommit.Result extract(miningsim.fragment.ExtractionPlanner.Plan plan,
+                                                               RigidBodyOccupancyIndex occupancy,long generation,boolean instrument) {
+        extractionCommitNanos=0;
         Objects.requireNonNull(plan); Objects.requireNonNull(occupancy);
         if(!coupledTo(plan.sourceWorld()) || !occupancy.owns(plan.sourceWorld())) throw new IllegalArgumentException("Extraction world mismatch");
         if(registry.size()>=registry.capacity()) return new miningsim.fragment.ExtractionCommit.Result(miningsim.fragment.ExtractionCommit.Status.CAPACITY,null);
@@ -119,7 +126,10 @@ public final class RigidBodySystem {
         if(next.putIfAbsent(body.id(),body)!=null) throw new IllegalStateException("Duplicate extraction body ID");
         var membership=new PreparedMembership(bodies,next);
         var snapshot=occupancy.prepare(membership.bodies(),generation);
-        return miningsim.fragment.ExtractionCommit.commit(plan,registry,prepared,snapshot,membership);
+        long start=instrument?System.nanoTime():0;
+        var result=miningsim.fragment.ExtractionCommit.commit(plan,registry,prepared,snapshot,membership);
+        if(instrument) extractionCommitNanos=System.nanoTime()-start;
+        return result;
     }
 
     public RigidBodySystem(FragmentRegistry registry) { this(registry, 4); }

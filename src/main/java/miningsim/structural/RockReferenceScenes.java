@@ -45,5 +45,10 @@ public final class RockReferenceScenes {
         }
         return create(name,w,12,3);
     }
+    public static Scene oversizedDetachment() {
+        World w=new World(40,40,World.Mode.BEDROCK_ENABLED);
+        for(int i=0;i<1025;i++) w.set(2+i%32,2+i/32,Material.STONE);
+        return create("oversized detachment",w,2,2);
+    }
     public static void finishConnectivity(RockConnectivity connectivity) { while (connectivity.pending()) connectivity.advance(10000); }
 }

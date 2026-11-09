@@ -39,6 +39,7 @@ public final class StructuralSimulationController {
         selectedX = scene.x(); selectedY = scene.y();
     }
     public World world() { return world; }
+    public RockConnectivity connectivity() { return connectivity; }
     public List<RockFragment> fragments() { return fragments.snapshot(); }
     public FragmentRegistry registry() { return fragments; }
     public String extractionMessage() { return extractionMessage; }

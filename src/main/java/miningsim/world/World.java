@@ -65,6 +65,7 @@ public final class World {
     /** Replacing or attaching a consumer requires it to rebuild from the current world. */
     public void setChangeSink(ChangeSink sink) { changeSink = sink; if (sink != null) sink.invalidated(); }
     public boolean hasChangeSink(ChangeSink sink) { return sink != null && changeSink == sink; }
+    public boolean hasChangeSink() { return changeSink != null; }
     public int width() { return width; }
     public int height() { return height; }
     /** Single-owner mutation token; does not install or replace the structural change sink. */

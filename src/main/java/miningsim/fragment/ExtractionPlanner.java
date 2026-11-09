@@ -27,14 +27,13 @@ public final class ExtractionPlanner {
         if (connectivity.pending()) return new Result(Status.PENDING,null);
         long revision=connectivity.revision();
         if (world.get(x,y) != Material.STONE) return new Result(Status.NOT_STONE,null);
-        int component=connectivity.componentAt(x,y), ordinal=0;
-        while (ordinal < connectivity.componentCount() && connectivity.componentId(ordinal) != component) ordinal++;
-        if (ordinal == connectivity.componentCount()) return new Result(Status.STALE,null);
+        int component=connectivity.componentAt(x,y), ordinal=connectivity.componentOrdinal(component);
+        if (ordinal < 0) return new Result(Status.STALE,null);
         if (connectivity.foundationConnected(ordinal)) return new Result(Status.SUPPORTED,null);
         if (connectivity.componentSize(ordinal) > maxCells) return new Result(Status.TOO_LARGE,null);
         List<Cell> worldCells = new ArrayList<>(); int minX=world.width(), minY=world.height();
-        for (int row=0;row<world.height();row++) for (int col=0;col<world.width();col++) {
-            if (connectivity.componentAt(col,row) == component) { worldCells.add(new Cell(col,row)); minX=Math.min(minX,col); minY=Math.min(minY,row); }
+        for(int index:connectivity.componentCells(ordinal)) {
+            int col=index%world.width(),row=index/world.width(); worldCells.add(new Cell(col,row)); minX=Math.min(minX,col); minY=Math.min(minY,row);
         }
         if (connectivity.pending() || connectivity.revision()!=revision || worldCells.size()!=connectivity.componentSize(ordinal)) return new Result(Status.STALE,null);
         List<Cell> local = new ArrayList<>(); for (Cell cell:worldCells) local.add(new Cell(cell.x()-minX,cell.y()-minY));

@@ -7,6 +7,10 @@ import miningsim.physics.*;
 import miningsim.simulation.CellularDisplacementPlanner;
 import miningsim.simulation.Simulation;
 import miningsim.world.World;
+import miningsim.structural.AutomaticRockDetachment;
+import miningsim.structural.RockConnectivity;
+import miningsim.fragment.ExtractionPlanner;
+import miningsim.world.Material;
 
 /** One owner thread coordinates a world and its associated simulation systems. */
 public final class InteractiveSession {
@@ -17,6 +21,8 @@ public final class InteractiveSession {
     private final RigidBodySystem physics;
     private final RigidBodyOccupancyIndex occupancy;
     private final CoupledSimulationStep coupled;
+    private final AutomaticRockDetachment automatic;
+    private int selectedX=-1,selectedY=-1;
     private final boolean instrument;
     private long structuralNanos;
     private int failures;
@@ -30,13 +36,18 @@ public final class InteractiveSession {
         this(world,structural,false);
     }
     public InteractiveSession(World world, StructuralSimulationController structural, boolean instrument) {
+        this(world,structural,instrument,structural==null && world.mode()==World.Mode.BEDROCK_ENABLED);
+    }
+    /** Explicitly enable topology detachment in selected structural demonstration scenes. */
+    public InteractiveSession(World world, StructuralSimulationController structural, boolean instrument, boolean autoEnabled) {
         this.world=Objects.requireNonNull(world); this.structural=structural;
         this.instrument=instrument;
         if(structural!=null && structural.world()!=world) throw new IllegalArgumentException("Structural world mismatch");
         simulation=new Simulation(world,12345);
         if(world.mode()==World.Mode.LEGACY) {
             if(structural!=null) throw new IllegalArgumentException("Legacy structural session unsupported");
-            registry=null; physics=null; occupancy=null; coupled=null;
+            if(autoEnabled) throw new IllegalArgumentException("Legacy automatic detachment unsupported");
+            registry=null; physics=null; occupancy=null; coupled=null; automatic=null;
         } else {
             registry=structural==null?new FragmentRegistry(1024):structural.registry();
             var query=new StaticCollisionQuery(world,100000,1000000,StaticCollisionQuery.MaterialPolicy.DISPLACE_GRANULAR);
@@ -46,6 +57,11 @@ public final class InteractiveSession {
                     new BodyContactSolver(BodyContactSolver.Config.defaults()));
             occupancy=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults());
             coupled=new CoupledSimulationStep(world,physics,occupancy,CellularDisplacementPlanner.Limits.defaults(),instrument);
+            if(autoEnabled) {
+                if(structural==null && world.hasChangeSink()) throw new IllegalArgumentException("World already has a structural owner");
+                var topology=structural==null?new RockConnectivity(world):structural.connectivity();
+                automatic=new AutomaticRockDetachment(world,topology,registry,physics,occupancy,AutomaticRockDetachment.Limits.defaults(),instrument);
+            } else automatic=null;
         }
     }
     public World world() { return world; }
@@ -54,6 +70,7 @@ public final class InteractiveSession {
     public RigidBodySystem physics() { return physics; }
     public RigidBodyOccupancyIndex occupancy() { return occupancy; }
     public CoupledSimulationStep coupled() { return coupled; }
+    public AutomaticRockDetachment automatic() { return automatic; }
     public String failure() { return failure; }
     public boolean blocked() { return blocked; }
     public boolean recovered() { return recovered; }
@@ -67,7 +84,9 @@ public final class InteractiveSession {
         if(retired) return;
         while(!commands.isEmpty()) { commands.removeFirst().run(); if(retired) return; }
         long start=instrument?System.nanoTime():0;
+        long workBefore=automatic!=null?automatic.topology().totalWork():0;
         if(structural!=null) structural.tick();
+        if(automatic!=null) automatic.tick(coupled.diagnostics().ticks(),Math.toIntExact(automatic.topology().totalWork()-workBefore));
         structuralNanos=instrument?System.nanoTime()-start:0;
         if(coupled==null) { simulation.step(); return; }
         if(blocked) return;
@@ -92,14 +111,22 @@ public final class InteractiveSession {
                 || message.contains("Displacement batch rejected") || message.contains("Non-finite motion bound"));
     }
     /** F5 uses the already analyzed selected component; the registry remains structural-owned. */
+    public void selectRock(int x,int y) {
+        if(retired || !world.contains(x,y) || world.get(x,y)!=Material.STONE) return;
+        selectedX=x; selectedY=y; if(structural!=null) structural.select(x,y);
+    }
     public ExtractionCommit.Status extractSelected() {
-        if(retired || structural==null || coupled==null) return ExtractionCommit.Status.INVALID;
-        var plan=structural.prepareSelected();
+        if(retired || coupled==null) return ExtractionCommit.Status.INVALID;
+        ExtractionPlanner.Result plan;
+        if(structural!=null) plan=structural.prepareSelected();
+        else if(automatic!=null && selectedX>=0) plan=ExtractionPlanner.prepare(world,automatic.topology(),selectedX,selectedY,1024);
+        else return ExtractionCommit.Status.INVALID;
         if(plan==null) return ExtractionCommit.Status.INVALID;
+        if(plan.status()!=ExtractionPlanner.Status.READY) return ExtractionCommit.Status.INVALID;
         ExtractionCommit.Status result;
         try { result=physics.extract(plan.plan(),occupancy,coupled.diagnostics().ticks()).status(); }
-        catch(RigidBodyOccupancyIndex.BudgetException ex) { structural.recordExtractionFailure(ex.getMessage()); return ExtractionCommit.Status.CAPACITY; }
-        structural.recordExtraction(result);
+        catch(RigidBodyOccupancyIndex.BudgetException ex) { if(structural!=null) structural.recordExtractionFailure(ex.getMessage()); return ExtractionCommit.Status.CAPACITY; }
+        if(structural!=null) structural.recordExtraction(result);
         if(result==ExtractionCommit.Status.COMMITTED) resume();
         return result;
     }

@@ -15,12 +15,13 @@ public final class RockConnectivity implements World.ChangeSink {
     private final int width, height, cells;
     // Two canonical bits per cell: bond to right, bond below.
     private BitSet broken = new BitSet();
-    private final int[] seen, labels, queue, componentIds, sizes;
+    private final int[] seen, labels, queue, componentIds, sizes, componentOrdinals, nextCell, lastCell;
     private final boolean[] foundations;
     private final long[] cellIncarnations;
     private int generation, scan, head, tail, currentId, count;
     private boolean pending = true, running;
     private long revision, restarts, totalWork, invalidationRevision;
+    private long lastAdditionRevision, lastDisruptionRevision;
     private boolean revisionExhausted;
     private int traversalDepth;
 
@@ -31,6 +32,7 @@ public final class RockConnectivity implements World.ChangeSink {
         if (cells > Integer.MAX_VALUE / 2) throw new IllegalArgumentException("World too large for bond indices");
         seen = new int[cells]; labels = new int[cells]; queue = new int[cells];
         componentIds = new int[cells]; sizes = new int[cells]; foundations = new boolean[cells];
+        componentOrdinals = new int[cells]; nextCell = new int[cells]; lastCell = new int[cells];
         cellIncarnations = new long[cells];
         world.setChangeSink(this);
     }
@@ -52,6 +54,7 @@ public final class RockConnectivity implements World.ChangeSink {
         if (x > 0) broken.clear((i - 1) * 2);
         if (y > 0) broken.clear((i - width) * 2 + 1);
         dirty();
+        if(next==Material.STONE.id()) lastAdditionRevision=revision; else lastDisruptionRevision=revision;
         cellIncarnations[i] = revision;
     }
     @Override public void changedBatch(java.util.List<World.CellChange> changes) {
@@ -61,6 +64,7 @@ public final class RockConnectivity implements World.ChangeSink {
         dirty();
         for (var c : changes) {
             if ((c.expected() == Material.STONE) == (c.replacement() == Material.STONE)) continue;
+            if(c.replacement()==Material.STONE) lastAdditionRevision=revision; else lastDisruptionRevision=revision;
             int i = c.y() * width + c.x();
             broken.clear(i * 2); broken.clear(i * 2 + 1);
             if (c.x() > 0) broken.clear((i - 1) * 2);
@@ -122,7 +126,7 @@ public final class RockConnectivity implements World.ChangeSink {
         if (world.get(x1, y1) != Material.STONE || world.get(x2, y2) != Material.STONE)
             throw new IllegalArgumentException("Bond requires two stone cells");
         if (broken.get(key)) return false;
-        broken.set(key); dirty(); return true;
+        broken.set(key); dirty(); lastDisruptionRevision=revision; return true;
     }
     public boolean pending() { attached(); return pending; }
     public boolean owns(World candidate) { attached(); return world == candidate; }
@@ -130,6 +134,8 @@ public final class RockConnectivity implements World.ChangeSink {
     public long revision() { attached(); return revision; }
     public long restarts() { attached(); return restarts; }
     public long totalWork() { attached(); return totalWork; }
+    public long lastAdditionRevision() { attached(); return lastAdditionRevision; }
+    public long lastDisruptionRevision() { attached(); return lastDisruptionRevision; }
 
     /** One unit scans a world cell or expands one queued stone cell (up to four neighbors). */
     public int advance(int budget) {
@@ -152,7 +158,8 @@ public final class RockConnectivity implements World.ChangeSink {
             } else if (scan < cells) {
                 int i = scan++;
                 if (seen[i] != generation && world.get(i % width, i / width) == Material.STONE) {
-                    currentId = i; componentIds[count++] = i; sizes[i] = 1; foundations[i] = false;
+                    currentId = i; componentOrdinals[i]=count; componentIds[count++] = i; sizes[i] = 1; foundations[i] = false;
+                    nextCell[i]=-1; lastCell[i]=i;
                     seen[i] = generation; labels[i] = i; head = 0; tail = 1; queue[0] = i;
                 }
             } else { pending = false; running = false; break; }
@@ -169,6 +176,7 @@ public final class RockConnectivity implements World.ChangeSink {
         int key = Math.min(from, to) * 2 + (Math.abs(from - to) == 1 && from / width == to / width ? 0 : 1);
         if (broken.get(key)) return;
         seen[to] = generation; labels[to] = currentId; sizes[currentId]++; queue[tail++] = to;
+        nextCell[lastCell[currentId]]=to; lastCell[currentId]=to; nextCell[to]=-1;
     }
     private void complete() { attached(); if (pending) throw new IllegalStateException("Connectivity analysis incomplete"); }
     public int componentCount() { complete(); return count; }
@@ -181,4 +189,14 @@ public final class RockConnectivity implements World.ChangeSink {
     }
     public int componentSize(int ordinal) { return sizes[componentId(ordinal)]; }
     public boolean foundationConnected(int ordinal) { return foundations[componentId(ordinal)]; }
+    /** Returns the completed component's row-major linear coordinates, without scanning the world. */
+    public int[] componentCells(int ordinal) {
+        int id=componentId(ordinal); int[] result=new int[sizes[id]]; int cell=id;
+        for(int i=0;i<result.length;i++) { result[i]=cell; cell=nextCell[cell]; }
+        java.util.Arrays.sort(result); return result;
+    }
+    public int componentOrdinal(int id) {
+        complete(); if(id<0 || id>=cells || seen[id]!=generation || labels[id]!=id) return -1;
+        return componentOrdinals[id];
+    }
 }

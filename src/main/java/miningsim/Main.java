@@ -75,9 +75,9 @@ public final class Main {
             MouseAdapter mouse = new MouseAdapter() {
                 @Override public void mousePressed(MouseEvent e) {
                     requestFocusInWindow();
-                    if (SwingUtilities.isMiddleMouseButton(e) && structural != null) {
-                        var target=structural; int x=(int)Math.floor(camera.screenToWorldX(e.getX())),y=(int)Math.floor(camera.screenToWorldY(e.getY()));
-                        session.enqueue(()->target.select(x,y));
+                    if (SwingUtilities.isMiddleMouseButton(e) && session.isCoupled()) {
+                        var target=session; int x=(int)Math.floor(camera.screenToWorldX(e.getX())),y=(int)Math.floor(camera.screenToWorldY(e.getY()));
+                        session.enqueue(()->target.selectRock(x,y));
                         repaint(); return;
                     }
                     if (SwingUtilities.isLeftMouseButton(e)) left = true;
@@ -120,7 +120,7 @@ public final class Main {
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
                         case KeyEvent.VK_F3 -> diagnostics = !diagnostics;
                         case KeyEvent.VK_F4 -> chooseReferenceScene();
-                        case KeyEvent.VK_F5 -> { if (structural != null) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
+                        case KeyEvent.VK_F5 -> { if (session.isCoupled()) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
                         case KeyEvent.VK_C -> resetWorld();
                         case KeyEvent.VK_F6 -> session.resume();
                         case KeyEvent.VK_LEFT -> panLeft = true;
@@ -194,7 +194,7 @@ public final class Main {
             try {
                 if (JOptionPane.showConfirmDialog(this, "Replace current world with a reference scene? Unsaved work will be lost.",
                         "Reference scene", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
-                int next = (sceneIndex + 1) % 8;
+                int next = (sceneIndex + 1) % 10;
                 var scene = switch (next) {
                     case 0 -> RockReferenceScenes.roof("short",4,1);
                     case 1 -> RockReferenceScenes.roof("long",12,1);
@@ -203,12 +203,14 @@ public final class Main {
                     case 4 -> RockReferenceScenes.island();
                     case 5 -> RockReferenceScenes.interactive("falling rock",Material.AIR);
                     case 6 -> RockReferenceScenes.interactive("rock and sand",Material.SAND);
-                    default -> RockReferenceScenes.interactive("rock and water",Material.WATER);
+                    case 7 -> RockReferenceScenes.interactive("rock and water",Material.WATER);
+                    case 8 -> RockReferenceScenes.cantilever(12);
+                    default -> RockReferenceScenes.oversizedDetachment();
                 };
                 boolean paused = control.paused();
                 var nextWorld=scene.world(); var nextStructural=new StructuralSimulationController(scene);
-                var nextSession=new InteractiveSession(nextWorld,nextStructural);
-                if(next>=5) { nextStructural.tick(); nextSession.extractSelected(); }
+                var nextSession=new InteractiveSession(nextWorld,nextStructural,false,next>=8);
+                if(next>=5 && next<=7) { nextStructural.tick(); nextSession.extractSelected(); }
                 var nextControl=new SimulationControl(nextSession::tick); if(paused) nextControl.togglePause();
                 var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
                 session.retire(); world=nextWorld; structural=nextStructural; session=nextSession; control=nextControl; renderer=nextRenderer;
@@ -255,7 +257,7 @@ public final class Main {
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 185 : 110);
+            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 235 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
@@ -273,6 +275,16 @@ public final class Main {
                             sceneName,v.status(),v.componentId(),v.cells(),v.utilization(),v.damage(),broken,v.ticks()),8,118);
                 }
                 CoupledDiagnosticsOverlay.render(g,session);
+                if(session.automatic()==null) g.drawString("AUTO DETACH: disabled (reference or legacy)",8,186);
+                else {
+                    var d=session.automatic().diagnostics();
+                    g.drawString(String.format(Locale.ROOT,"AUTO DETACH: %s | topology rev %d | work %d | unsupported %d eligible %d",
+                            d.pending()?"pending":"complete",d.revision(),d.work(),d.unsupported(),d.eligible()),8,186);
+                    g.drawString(String.format(Locale.ROOT,"Detached %d (%d cells), total %d | settling %d | too large %d | rejected %d",
+                            d.detached(),d.detachedCells(),d.total(),d.deferred(),d.tooLarge(),d.rejected()),8,203);
+                    var message=d.failure(); if(message.length()>100) message=message.substring(0,97)+"...";
+                    g.drawString(message,8,220);
+                }
             }
             g.dispose();
             frames++;
