@@ -30,7 +30,7 @@ public final class StaticCollisionQuery {
         this.maxCandidates = maxCandidates; this.maxChecks = maxChecks;
         this.policy = Objects.requireNonNull(policy);
     }
-    long worldRevision() { return world.mutationRevision(); }
+    long worldRevision() { return policy==MaterialPolicy.DISPLACE_GRANULAR?world.rigidTerrainRevision():world.mutationRevision(); }
     boolean coupledTo(World candidate) { return world==candidate && policy==MaterialPolicy.DISPLACE_GRANULAR; }
 
     public static boolean solid(Material material) {

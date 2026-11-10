@@ -36,6 +36,9 @@ public final class World {
     private final Mode mode;
     private ChangeSink changeSink;
     private long mutationRevision;
+    // Coupled rigid bodies collide only with STONE, WOOD and immutable BEDROCK.
+    // Cellular motion must not wake the whole sleeping rigid-body system.
+    private long rigidTerrainRevision;
 
     public World(int width, int height) {
         this(width, height, Mode.LEGACY);
@@ -70,6 +73,11 @@ public final class World {
     public int height() { return height; }
     /** Single-owner mutation token; does not install or replace the structural change sink. */
     public long mutationRevision() { return mutationRevision; }
+    /** Changes when coupled rigid-body obstacle geometry or material may change. */
+    public long rigidTerrainRevision() { return rigidTerrainRevision; }
+    private static boolean rigidTerrain(Material material) {
+        return material==Material.STONE || material==Material.WOOD || material==Material.BEDROCK;
+    }
     public boolean contains(int x, int y) { return x >= 0 && x < width && y >= 0 && y < height; }
     private Chunk chunkAt(int x, int y) {
         if (!contains(x, y)) throw new IndexOutOfBoundsException(x + ", " + y);
@@ -103,8 +111,11 @@ public final class World {
         if (previous == id) return Mutation.NO_OP;
         if (material == Material.BEDROCK || previous == Material.BEDROCK.id()) return Mutation.REJECTED;
         long nextRevision = Math.addExact(mutationRevision, 1);
+        boolean rigidChange=rigidTerrain(Material.fromId(previous)) || rigidTerrain(material);
+        long nextRigidRevision=rigidChange?Math.addExact(rigidTerrainRevision,1):rigidTerrainRevision;
         chunk.cells[localIndex] = id;
         mutationRevision = nextRevision;
+        rigidTerrainRevision=nextRigidRevision;
         if (trackActivity) changedTiles[(y / ACTIVITY_TILE_SIZE) * tileColumns + x / ACTIVITY_TILE_SIZE] = true;
         if (changeSink != null) changeSink.changed(x, y, previous, id);
         return Mutation.CHANGED;
@@ -169,12 +180,16 @@ public final class World {
         }
         List<CellChange> notification = List.copyOf(actual);
         long nextRevision = Math.addExact(mutationRevision, 1);
+        boolean rigidChange=false;
+        for(var change:notification) if(rigidTerrain(change.expected()) || rigidTerrain(change.replacement())) { rigidChange=true; break; }
+        long nextRigidRevision=rigidChange?Math.addExact(rigidTerrainRevision,1):rigidTerrainRevision;
         for (CellChange c : notification) {
             Chunk chunk = chunkAt(c.x(),c.y());
             chunk.cells[((c.y() & CHUNK_MASK) << CHUNK_SHIFT) | (c.x() & CHUNK_MASK)] = c.replacement().id();
             if (trackActivity) changedTiles[(c.y() / ACTIVITY_TILE_SIZE) * tileColumns + c.x() / ACTIVITY_TILE_SIZE] = true;
         }
         mutationRevision = nextRevision;
+        rigidTerrainRevision=nextRigidRevision;
         // No external code runs between preflight and this allocation-free single-owner publication.
         if (prepared != null) prepared.publish();
         if (occupancy != null) occupancy.publish();
@@ -184,6 +199,7 @@ public final class World {
     }
     public void clear() {
         long nextRevision = Math.addExact(mutationRevision, 1);
+        long nextRigidRevision = Math.addExact(rigidTerrainRevision, 1);
         if (mode == Mode.LEGACY) {
             for (Chunk chunk : chunks) chunk.clear();
         } else {
@@ -196,6 +212,7 @@ public final class World {
         }
         Arrays.fill(changedTiles, true);
         mutationRevision = nextRevision;
+        rigidTerrainRevision=nextRigidRevision;
         if (changeSink != null) changeSink.invalidated();
     }
     public int activityTileColumns() { return tileColumns; }

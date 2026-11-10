@@ -151,6 +151,8 @@ M4.5a.2 accelerates large compound contacts and explicitly allows supported micr
 
 M4.5a.3-lite keeps the gameplay sleep window while preventing significant within-tick motion from counting as quiet. See `docs/m4-5a3-lite-rock-settling.md`.
 
+M4.5a.4 separates coupled rigid-terrain revision from cellular changes to prevent unnecessary wakes and repeated-sweep blocking. See `docs/m4-5a4-cellular-after-collapse.md`.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.
