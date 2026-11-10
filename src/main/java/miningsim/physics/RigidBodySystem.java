@@ -7,6 +7,8 @@ import miningsim.fragment.FragmentRegistry;
 
 /** Headless fixed-step motion, optionally with discrete static collisions. */
 public final class RigidBodySystem {
+    private static final double SETTLING_DISTURBANCE_LINEAR_MULTIPLIER=5.0;
+    private static final double SETTLING_DISTURBANCE_ANGULAR_MULTIPLIER=10.0;
     enum Checkpoint { AFTER_SYNC, AFTER_WAKE, DURING_WAKE_PROPAGATION, AFTER_STATIC_PREPARE, AFTER_PAIR_QUERY,
                       AFTER_VELOCITY, AFTER_POSITION, BEFORE_SUPPORT, DURING_SUPPORT_EVALUATION, AFTER_PUBLICATION }
     private java.util.function.Consumer<Checkpoint> testCheckpoint;
@@ -305,6 +307,10 @@ public final class RigidBodySystem {
         double dt = TICK_SECONDS / substeps, maxTravel = 0, maxDisplacement = 0, maxAngle = 0;
         var initialStates=new TreeMap<Long,RigidBody.State>();
         for(var body:bodies.values()) initialStates.put(body.id(),body.state());
+        // Per-tick transient only: a large impact must reset the whole island's
+        // quiet window even if the velocity solver removes it before tick end.
+        var disturbed=new java.util.TreeSet<Long>();
+        for(var body:bodies.values()) noteSettlingDisturbance(body,disturbed);
         int shared = 0, work = 0, maxPerBody = 0;
         var perBody = new TreeMap<Long, Integer>();
         for (int sub = 0; sub < substeps; sub++) {
@@ -326,6 +332,7 @@ public final class RigidBodySystem {
                     maxTravel = Math.max(maxTravel, travelBound(body, interval));
                     double x = body.xCells(), y = body.yCells(), angle = body.angleRadians();
                     body.integrate(interval, GRAVITY_METRES_PER_SECOND_SQUARED);
+                    noteSettlingDisturbance(body,disturbed);
                     trace(body);
                     maxDisplacement = Math.max(maxDisplacement, Math.hypot(body.xCells() - x, body.yCells() - y));
                     maxAngle = Math.max(maxAngle, Math.abs(body.angleRadians() - angle));
@@ -334,6 +341,7 @@ public final class RigidBodySystem {
                 if (solver != null) for (var body : bodies.values()) if (!body.sleeping()) staticConstraints.add(solver.prepare(body));
                 checkpoint(Checkpoint.AFTER_STATIC_PREPARE);
                 var dynamicContacts = queryBodies();
+                for(var contact:dynamicContacts) noteRelativeSettlingDisturbance(contact,disturbed);
                 checkpoint(Checkpoint.AFTER_PAIR_QUERY);
                 if (dynamicContacts.stream().anyMatch(c -> bodies.get(c.bodyA()).sleeping() != bodies.get(c.bodyB()).sleeping()))
                     throw new IllegalStateException("Sleeping body reached without pre-integration wake");
@@ -349,6 +357,7 @@ public final class RigidBodySystem {
                     }
                     if (pass < bodySolver.iterations() && !activeContacts.isEmpty()) interactionWork.iterations = Math.incrementExact(interactionWork.iterations);
                 }
+                for(var body:bodies.values()) noteSettlingDisturbance(body,disturbed);
                 checkpoint(Checkpoint.AFTER_VELOCITY);
                 for (int pass = 0; pass < interactionConfig.positionIterations(); pass++) {
                     if (solver != null && pass < solver.positionIterations()) for (var body : bodies.values()) if (!body.sleeping()) { maxPositionCorrection=Math.max(maxPositionCorrection,solver.correctPosition(body)); trace(body); }
@@ -383,7 +392,7 @@ public final class RigidBodySystem {
             if (c.normalY() > 0.5 && supported.contains(c.bodyB())) supported.add(c.bodyA());
             if (c.normalY() < -0.5 && supported.contains(c.bodyA())) supported.add(c.bodyB());
         }
-        updateIslandSleep(contacts,supported,initialStates);
+        updateIslandSleep(contacts,supported,initialStates,disturbed);
         int sleeping = 0; for (var body : bodies.values()) if (body.sleeping()) sleeping++;
         interactionDiagnostics = new InteractionDiagnostics(shared,interactionWork.pairs,interactionWork.overlapping,interactionWork.checks,
                 interactionWork.raw,interactionWork.reduced,interactionWork.iterations,sleeping,interactionWork.woken,interactionWork.penetration);
@@ -391,7 +400,7 @@ public final class RigidBodySystem {
         motionDiagnostics = new MotionDiagnostics(substeps, work, maxPerBody, maxTravel, maxDisplacement, maxAngle);
     }
     /** Contact-connected bodies may sleep only together after the whole supported island is quiet. */
-    private void updateIslandSleep(List<BodyCollisionQuery.Contact> contacts,java.util.Set<Long> supported,TreeMap<Long,RigidBody.State> initialStates) {
+    private void updateIslandSleep(List<BodyCollisionQuery.Contact> contacts,java.util.Set<Long> supported,TreeMap<Long,RigidBody.State> initialStates,java.util.Set<Long> disturbed) {
         var ordered=bodies(); int n=ordered.size(); int[] parent=new int[n];
         var indices=new TreeMap<Long,Integer>();
         for(int i=0;i<n;i++) { parent[i]=i; indices.put(ordered.get(i).id(),i); }
@@ -408,12 +417,33 @@ public final class RigidBodySystem {
             var initial=initialStates.get(body.id());
             double displacement=Math.hypot(body.xCells()-initial.x(),body.yCells()-initial.y());
             double rotation=Math.abs(body.angleRadians()-initial.angle());
-            eligible[root]&=body.sleepEligible(supported.contains(body.id()),sleepConfig)
+            eligible[root]&=!disturbed.contains(body.id()) && body.sleepEligible(supported.contains(body.id()),sleepConfig)
                     && displacement<sleepConfig.linearSpeed()*TICK_SECONDS/FragmentGeometry.METRES_PER_CELL
                     && rotation<sleepConfig.angularSpeed()*TICK_SECONDS;
             minimum[root]=Math.min(minimum[root],body.sleepTicks());
         }
         for(int i=0;i<n;i++) { int root=islandRoot(parent,i); ordered.get(i).updateIslandSleep(eligible[root],minimum[root],sleepConfig); }
+    }
+    private void noteSettlingDisturbance(RigidBody body,java.util.Set<Long> disturbed) {
+        // Five times the configured quiet linear speed or ten times the quiet
+        // angular speed is a significant transient, not a sleep tolerance.
+        if(Math.hypot(body.velocityXMetresPerSecond(),body.velocityYMetresPerSecond())>=SETTLING_DISTURBANCE_LINEAR_MULTIPLIER*sleepConfig.linearSpeed()
+                || Math.abs(body.angularVelocityRadiansPerSecond())>=SETTLING_DISTURBANCE_ANGULAR_MULTIPLIER*sleepConfig.angularSpeed()) disturbed.add(body.id());
+    }
+    private void noteRelativeSettlingDisturbance(BodyCollisionQuery.Contact contact,java.util.Set<Long> disturbed) {
+        var a=bodies.get(contact.bodyA()); var b=bodies.get(contact.bodyB());
+        double arx=(contact.pointX()-a.xCells())*FragmentGeometry.METRES_PER_CELL;
+        double ary=(contact.pointY()-a.yCells())*FragmentGeometry.METRES_PER_CELL;
+        double brx=(contact.pointX()-b.xCells())*FragmentGeometry.METRES_PER_CELL;
+        double bry=(contact.pointY()-b.yCells())*FragmentGeometry.METRES_PER_CELL;
+        double vx=b.velocityXMetresPerSecond()-b.angularVelocityRadiansPerSecond()*bry
+                -a.velocityXMetresPerSecond()+a.angularVelocityRadiansPerSecond()*ary;
+        double vy=b.velocityYMetresPerSecond()+b.angularVelocityRadiansPerSecond()*brx
+                -a.velocityYMetresPerSecond()-a.angularVelocityRadiansPerSecond()*arx;
+        if(Math.hypot(vx,vy)>=SETTLING_DISTURBANCE_LINEAR_MULTIPLIER*sleepConfig.linearSpeed()
+                || Math.abs(a.angularVelocityRadiansPerSecond()-b.angularVelocityRadiansPerSecond())>=SETTLING_DISTURBANCE_ANGULAR_MULTIPLIER*sleepConfig.angularSpeed()) {
+            disturbed.add(a.id()); disturbed.add(b.id());
+        }
     }
     private void consumeIslandWork() {
         interactionWork.wakeWork=Math.incrementExact(interactionWork.wakeWork);

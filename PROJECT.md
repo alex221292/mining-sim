@@ -149,6 +149,8 @@ M4.5a.1 coordinates sleeping across contact islands and avoids redundant sleepin
 
 M4.5a.2 accelerates large compound contacts and explicitly allows supported microscopic sliding to sleep. Measurements, determinism, limitations and manual checks: `docs/m4-5a2-large-compound-contacts.md`.
 
+M4.5a.3-lite keeps the gameplay sleep window while preventing significant within-tick motion from counting as quiet. See `docs/m4-5a3-lite-rock-settling.md`.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.
