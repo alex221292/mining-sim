@@ -3,6 +3,11 @@ package miningsim.simulation;
 import static org.junit.jupiter.api.Assertions.*;
 import miningsim.world.Material;
 import miningsim.world.World;
+import miningsim.physics.RestingStackBenchmark;
+import miningsim.physics.CoupledSimulationStep;
+import miningsim.resource.FragmentDescriptor;
+import miningsim.resource.SubstanceRegistry;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class RecoveryAtomicityTest {
@@ -48,5 +53,29 @@ class RecoveryAtomicityTest {
         assertEquals(Material.SAND,oversized.get(5,1));
         var world=world(); var active=new Simulation(world,7,Simulation.Mode.ACTIVE_REGIONS,false);
         var before=snapshot(world); assertFalse(active.stepRecoveryAtomically(null)); assertEquals(before,snapshot(world));
+    }
+    @Test void injectedRecoveryFailureAfterRealSweepPreservesPhysicsAndWorld() {
+        var scene=RestingStackBenchmark.scene(); var session=scene.session();
+        for(int i=0;i<500;i++) session.tick();
+        var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0)));
+        scene.registry().insert(shape,3,1,0); scene.physics().synchronize(); scene.occupancy().rebuild(scene.physics(),scene.coupling().diagnostics().ticks());
+        var body=scene.physics().body(4); body.setVelocity(0,60,0);
+        scene.world().set(3,5,Material.SAND); scene.world().set(40,1,Material.SAND);
+        var cellSimulation=new Simulation(scene.world(),12345);
+        var occupancy=scene.occupancy().snapshot(); var initial=snapshot(scene.world());
+        long revision=scene.world().mutationRevision(),terrain=scene.world().rigidTerrainRevision();
+        double x=body.xCells(),y=body.yCells(),vx=body.velocityXMetresPerSecond(),vy=body.velocityYMetresPerSecond();
+        assertThrows(IllegalStateException.class,scene.coupling()::step);
+        assertEquals(CoupledSimulationStep.FailureStage.SWEEP,scene.coupling().lastFailureStage());
+        cellSimulation.setRecoveryTestCheckpoint(()->{ throw new IllegalStateException("injected mid-step"); });
+        assertFalse(scene.coupling().stepCellsAfterSweepRollback(cellSimulation));
+        assertEquals(CoupledSimulationStep.RecoveryOutcome.CELLULAR_FAILED,scene.coupling().recoveryOutcome());
+        assertEquals(initial,snapshot(scene.world())); assertEquals(revision,scene.world().mutationRevision()); assertEquals(terrain,scene.world().rigidTerrainRevision());
+        assertSame(occupancy,scene.occupancy().snapshot()); assertEquals(x,body.xCells()); assertEquals(y,body.yCells());
+        assertEquals(vx,body.velocityXMetresPerSecond()); assertEquals(vy,body.velocityYMetresPerSecond());
+        cellSimulation.setRecoveryTestCheckpoint(null);
+        assertThrows(IllegalStateException.class,scene.coupling()::step);
+        assertTrue(scene.coupling().stepCellsAfterSweepRollback(cellSimulation));
+        assertEquals(Material.AIR,scene.world().get(3,5));
     }
 }
