@@ -11,6 +11,7 @@ import java.util.ArrayList;
 /** Single-owner physics, displacement and occupancy transaction. Cellular movement is separate. */
 public final class CoupledSimulationStep {
     public enum CellularOutcome { NOT_RUN, COMPLETED, FAILED }
+    public enum RecoveryOutcome { NOT_ATTEMPTED, OCCUPANCY_MISMATCH, OCCUPANCY_CONFLICT, VALIDATION_FAILED, CELLULAR_FAILED, CELLULAR_STALLED, CELLULAR_ADVANCED, OBSTRUCTION_CLEARED }
     public enum FailureStage { PHYSICS, OCCUPANCY, SWEEP, PLANNING, WORLD_COMMIT, CELLULAR }
     public record Diagnostics(long ticks,int sand,int gravel,int soil,int water,long distance,
                               int maxDistance,long candidates,long checks,long occupancyRevision,
@@ -26,6 +27,18 @@ public final class CoupledSimulationStep {
     private String lastFailure;
     private FailureStage lastFailureStage;
     private RigidBodyOccupancyIndex.Snapshot committedSnapshot;
+    private RigidBodyOccupancyIndex.Snapshot rollbackSnapshot;
+    private long rollbackWorldRevision;
+    private boolean sweepRolledBack;
+    private RecoveryOutcome recoveryOutcome=RecoveryOutcome.NOT_ATTEMPTED;
+    private SweepObstruction sweepObstruction;
+    private static final class SweepObstruction extends IllegalStateException {
+        final int x,y;
+        SweepObstruction(int x,int y,Material material,long bodyId) {
+            super("Intermediate swept material obstruction at "+x+","+y+" ("+material+") for body "+bodyId);
+            this.x=x; this.y=y;
+        }
+    }
     private record Pose(double x,double y,double angle) { }
     private record SweepWork(long candidates,long poses) { }
     private static final class Trace {
@@ -48,11 +61,13 @@ public final class CoupledSimulationStep {
     public Diagnostics diagnostics() { return diagnostics; }
     public String lastFailure() { return lastFailure; }
     public FailureStage lastFailureStage() { return lastFailureStage; }
+    public RecoveryOutcome recoveryOutcome() { return recoveryOutcome; }
     public PhaseTimes phaseTimes() { return new PhaseTimes(physicsNanos,occupancyNanos,planningNanos,commitNanos,cellularNanos); }
     /** Change only on the simulation owner thread, between ticks. */
     public void enableProfiling(boolean enabled) { instrument=enabled; }
     public void step() {
         var checkpoint=physics.coupledCheckpoint(); long worldRevision=world.mutationRevision();
+        var oldSnapshot=occupancy.snapshot(); sweepRolledBack=false; sweepObstruction=null; recoveryOutcome=RecoveryOutcome.NOT_ATTEMPTED;
         var traces=new TreeMap<Long,Trace>();
         FailureStage stage=FailureStage.PHYSICS;
         try {
@@ -84,11 +99,42 @@ public final class CoupledSimulationStep {
             physicsNanos=physicsTime; occupancyNanos=occupancyTime; planningNanos=planningTime; commitNanos=commitTime; cellularNanos=0;
         } catch(RuntimeException ex) {
             // Throwing callbacks violate World.ChangeSink's contract; world writes cannot be rolled back here.
-            if(world.mutationRevision()==worldRevision) checkpoint.restore();
+            if(world.mutationRevision()==worldRevision) {
+                checkpoint.restore();
+                if(stage==FailureStage.SWEEP && ex instanceof SweepObstruction obstruction && occupancy.snapshot()==oldSnapshot) {
+                    sweepRolledBack=true; sweepObstruction=obstruction; rollbackSnapshot=oldSnapshot; rollbackWorldRevision=worldRevision;
+                }
+            }
             lastFailure=ex.getClass().getSimpleName()+": "+ex.getMessage();
             lastFailureStage=stage;
             throw ex;
         }
+    }
+    /** Advance only cellular matter after a verified SWEEP rollback, against unchanged, verified occupancy. */
+    public boolean stepCellsAfterSweepRollback(Simulation simulation) {
+        Objects.requireNonNull(simulation);
+        if(!simulation.owns(world)) throw new IllegalArgumentException("Simulation belongs to a different world");
+        if(!sweepRolledBack) return false;
+        if(occupancy.snapshot()!=rollbackSnapshot || world.mutationRevision()!=rollbackWorldRevision) { recoveryOutcome=RecoveryOutcome.OCCUPANCY_MISMATCH; return false; }
+        sweepRolledBack=false;
+        try {
+            var check=occupancy.prepare(physics,diagnostics.ticks()).snapshot();
+            if(!check.sameMembership(rollbackSnapshot)) { recoveryOutcome=RecoveryOutcome.OCCUPANCY_MISMATCH; return false; }
+        } catch(IllegalStateException | ArithmeticException ex) { recoveryOutcome=RecoveryOutcome.VALIDATION_FAILED; return false; }
+        boolean[] conflict={false};
+        rollbackSnapshot.forEachCell((x,y)->{
+            if(CellularDisplacementPlanner.classify(world.get(x,y))==CellularDisplacementPlanner.Kind.DISPLACEABLE) conflict[0]=true;
+        });
+        if(conflict[0]) { recoveryOutcome=RecoveryOutcome.OCCUPANCY_CONFLICT; return false; }
+        long before=world.mutationRevision();
+        if(!simulation.stepRecoveryAtomically(rollbackSnapshot)) { recoveryOutcome=RecoveryOutcome.CELLULAR_FAILED; return false; }
+        recoveryOutcome=sweepObstructionCleared()?RecoveryOutcome.OBSTRUCTION_CLEARED:
+                world.mutationRevision()!=before?RecoveryOutcome.CELLULAR_ADVANCED:RecoveryOutcome.CELLULAR_STALLED;
+        return true;
+    }
+    /** Whether the last rejected swept cell is no longer occupied by movable material. */
+    public boolean sweepObstructionCleared() {
+        return sweepObstruction!=null && CellularDisplacementPlanner.classify(world.get(sweepObstruction.x,sweepObstruction.y))!=CellularDisplacementPlanner.Kind.DISPLACEABLE;
     }
     /** Intermediate actual cell polygons are tested separately from final occupancy. */
     private SweepWork rejectUnresolvedSweep(TreeMap<Long,Trace> traces,RigidBodyOccupancyIndex.Snapshot target) {
@@ -129,7 +175,7 @@ public final class CoupledSimulationStep {
                             var material=world.get(x,y);
                             if(!target.occupied(x,y) && CellularDisplacementPlanner.classify(material)==CellularDisplacementPlanner.Kind.DISPLACEABLE
                                     && RigidBodyOccupancyIndex.intersectionArea(px,py,x,y)>RigidBodyOccupancyIndex.AREA_EPSILON)
-                                throw new IllegalStateException("Intermediate swept material obstruction at "+x+","+y+" ("+material+") for body "+trace.body.id());
+                                throw new SweepObstruction(x,y,material,trace.body.id());
                         }
                     }
                 }

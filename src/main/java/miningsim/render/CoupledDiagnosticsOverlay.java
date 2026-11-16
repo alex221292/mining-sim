@@ -23,5 +23,8 @@ public final class CoupledDiagnosticsOverlay {
                 t.physicsNanos()/1e6,p.bodyQueryNanos()/1e6,p.staticQueryNanos()/1e6,t.occupancyNanos()/1e6),8,240);
         g.drawString(String.format(Locale.ROOT,"SAT %d | microsteps %d | sleeping %d active %d | profiling from next tick",
                 c.checks(),session.physics().motionDiagnostics().executedMicrosteps(),c.sleepingBodies(),o.indexedBodies()-c.sleepingBodies()),8,257);
+        g.drawString(String.format(Locale.ROOT,"Cellular steps %d | matching failures %d | stalled %d/3 | stage %s",
+                session.cellularSteps(),session.consecutiveFailures(),session.stalledRecoveryAttempts(),session.coupled().lastFailureStage()),8,274);
+        g.drawString("Recovery: "+session.coupled().recoveryOutcome()+" | F6 retry; change obstruction if blocked",8,291);
     }
 }

@@ -37,6 +37,10 @@ public final class RigidBodyOccupancyIndex {
         public int width() { return width; }
         public int height() { return height; }
         public Diagnostics diagnostics() { return diagnostics; }
+        boolean sameMembership(Snapshot other) {
+            return other!=null && width==other.width && height==other.height
+                    && Arrays.equals(keys,other.keys) && Arrays.equals(offsets,other.offsets) && Arrays.equals(ids,other.ids);
+        }
         public boolean occupied(int x, int y) { return index(x,y) >= 0; }
         public long[] bodyIdsAt(int x, int y) {
             int i=index(x,y); return i < 0 ? new long[0] : Arrays.copyOfRange(ids,offsets[i],offsets[i+1]);

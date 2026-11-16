@@ -262,14 +262,18 @@ public final class Main {
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 275 : 110);
+            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 315 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
-            g.drawString("Brush: " + brush + (control.paused() ? " | PAUSED" : "") + " | FPS: " + fps + " | TPS: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
+            String runState=session.blocked()?"BLOCKED":control.paused()?"PAUSED":session.failure()!=null?"RETRYING":"RUNNING";
+            g.drawString("Brush: " + brush + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
-            g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
+            if(session.failure()!=null) {
+                String reason=session.failure(); if(reason.length()>85) reason=reason.substring(0,82)+"...";
+                g.drawString(reason+" | F6 retry",8,67);
+            } else g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
             g.drawString("F3: diagnostics | F4: scene | F5: extract | F6: retry | Middle click: select",8,101);
             if (diagnostics) {

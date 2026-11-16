@@ -26,10 +26,12 @@ public final class InteractiveSession {
     private boolean instrument;
     private long structuralNanos;
     private int failures;
+    private int recoveryStalls;
     private String failure;
     private boolean blocked;
     private boolean retired;
     private boolean recovered;
+    private long cellularSteps;
     private final java.util.ArrayDeque<Runnable> commands=new java.util.ArrayDeque<>();
 
     public InteractiveSession(World world, StructuralSimulationController structural) {
@@ -75,13 +77,16 @@ public final class InteractiveSession {
     public String failure() { return failure; }
     public boolean blocked() { return blocked; }
     public boolean recovered() { return recovered; }
+    public int consecutiveFailures() { return failures; }
+    public int stalledRecoveryAttempts() { return recoveryStalls; }
+    public long cellularSteps() { return cellularSteps; }
     public long structuralNanos() { return structuralNanos; }
     /** Called by the owner thread between ticks. */
     public void enableProfiling(boolean enabled) {
         instrument=enabled;
         if(coupled!=null) { physics.enableProfiling(enabled); coupled.enableProfiling(enabled); }
     }
-    public void resume() { if (!retired) { blocked=false; failures=0; } }
+    public void resume() { if (!retired) { blocked=false; failures=0; recoveryStalls=0; } }
     /** Abandoned sessions must never execute previously queued input again. */
     public void retire() { retired=true; commands.clear(); }
     /** Called by the owner thread; commands are consumed before the next fixed tick. */
@@ -94,20 +99,25 @@ public final class InteractiveSession {
         if(structural!=null) structural.tick();
         if(automatic!=null) automatic.tick(coupled.diagnostics().ticks(),Math.toIntExact(automatic.topology().totalWork()-workBefore));
         structuralNanos=instrument?System.nanoTime()-start:0;
-        if(coupled==null) { simulation.step(); return; }
+        if(coupled==null) { simulation.step(); cellularSteps=Math.incrementExact(cellularSteps); return; }
         if(blocked) return;
         try { coupled.step(); }
         catch(IllegalStateException ex) {
             if(!expectedRejection(ex)) throw ex;
             String next=coupled.lastFailureStage()+": "+ex.getMessage();
-            failures=next.equals(failure)?failures+1:1; failure=next; recovered=false;
-            if(failures>=3) blocked=true;
+            boolean sameFailure=next.equals(failure);
+            failures=sameFailure?(failures==Integer.MAX_VALUE?failures:failures+1):1; failure=next; recovered=false;
+            boolean cellularRecovery=coupled.stepCellsAfterSweepRollback(simulation);
+            if(cellularRecovery) cellularSteps=Math.incrementExact(cellularSteps);
+            recoveryStalls=cellularRecovery && coupled.sweepObstructionCleared()?0:Math.min(3,recoveryStalls+1);
+            if(recoveryStalls>=3) blocked=true;
             return;
         }
         if(failure!=null) recovered=true;
-        failure=null; failures=0;
+        failure=null; failures=0; recoveryStalls=0;
         // This phase is intentionally outside the coupled transaction.
         coupled.stepCells(simulation);
+        cellularSteps=Math.incrementExact(cellularSteps);
     }
     private static boolean expectedRejection(IllegalStateException ex) {
         if(ex instanceof RigidBodySystem.MotionBudgetException || ex instanceof RigidBodyOccupancyIndex.BudgetException) return true;

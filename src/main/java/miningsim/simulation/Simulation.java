@@ -2,6 +2,12 @@ package miningsim.simulation;
 
 import java.util.Arrays;
 import java.util.Random;
+import java.util.ArrayList;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.IOException;
 import miningsim.world.Material;
 import miningsim.world.World;
 import miningsim.physics.RigidBodyOccupancyIndex;
@@ -9,8 +15,10 @@ import miningsim.physics.RigidBodyOccupancyIndex;
 public final class Simulation {
     public enum Mode { FULL_SCAN, ACTIVE_REGIONS, DIAGNOSTIC_FULL_TRACKED, DIAGNOSTIC_TILED_TRACKED }
     private static final int WATER_REACH = 8;
+    /** Hard bound for exceptional, off-world recovery; normal ticks do not copy the world. */
+    private static final long MAX_RECOVERY_CELLS = 2_000_000;
     private final World world;
-    private final Random random;
+    private Random random;
     private final boolean[] moved;
     private final boolean[] active;
     private final World.RowSegment rowSegment;
@@ -20,6 +28,7 @@ public final class Simulation {
     private long visited, movements, collectNanos, resetNanos, tickNanos;
     private int activeTiles;
     private RigidBodyOccupancyIndex.Snapshot occupancy;
+    private Runnable recoveryTestCheckpoint;
 
     public Simulation(World world, long seed) {
         this(world, seed, Mode.FULL_SCAN, false);
@@ -45,6 +54,52 @@ public final class Simulation {
     public long resetNanos() { return resetNanos; }
     public long tickNanos() { return tickNanos; }
     public boolean owns(World candidate) { return world == candidate; }
+
+    /** Package-private fault injection for a prepared recovery step. */
+    void setRecoveryTestCheckpoint(Runnable checkpoint) { recoveryTestCheckpoint=checkpoint; }
+
+    /**
+     * Prepare a FULL_SCAN step in an isolated World, then commit its complete
+     * material delta and RNG state only after successful batch publication.
+     * Returns false without publishing on budget, preparation or commit failure.
+     */
+    public boolean stepRecoveryAtomically(RigidBodyOccupancyIndex.Snapshot snapshot) {
+        if(mode!=Mode.FULL_SCAN || (long)world.width()*world.height()>MAX_RECOVERY_CELLS) return false;
+        long revision=world.mutationRevision();
+        Simulation fork;
+        ArrayList<World.CellChange> changes;
+        try {
+            var shadow=new World(world.width(),world.height(),world.mode());
+            for(int y=0;y<world.height();y++) for(int x=0;x<world.width();x++) {
+                var material=world.get(x,y);
+                if(material!=Material.AIR && material!=Material.BEDROCK && shadow.set(x,y,material)!=World.Mutation.CHANGED) return false;
+                if(material==Material.BEDROCK && shadow.get(x,y)!=Material.BEDROCK) return false;
+            }
+            fork=new Simulation(shadow,0,Mode.FULL_SCAN,false);
+            fork.random=copyRandom(random); fork.recoveryTestCheckpoint=recoveryTestCheckpoint;
+            fork.setOccupancy(snapshot); fork.step();
+            changes=new ArrayList<World.CellChange>();
+            for(int y=0;y<world.height();y++) for(int x=0;x<world.width();x++) {
+                var before=world.get(x,y); var after=shadow.get(x,y);
+                if(before!=after) changes.add(new World.CellChange(x,y,before,after));
+            }
+            if(world.mutationRevision()!=revision) return false;
+        } catch(RuntimeException ex) {
+            // Preparation touches only the shadow and cannot publish a partial step.
+            return false;
+        }
+        // As with all World batches, ChangeSink callbacks must not throw.
+        if(world.replaceAllIfMatches(changes)==World.BatchResult.REJECTED) return false;
+        random=fork.random; occupancy=snapshot;
+        return true;
+    }
+    private static Random copyRandom(Random source) {
+        try {
+            var bytes=new ByteArrayOutputStream();
+            try(var output=new ObjectOutputStream(bytes)) { output.writeObject(source); }
+            try(var input=new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) { return (Random)input.readObject(); }
+        } catch(IOException | ClassNotFoundException ex) { throw new IllegalStateException("Cannot checkpoint cellular RNG",ex); }
+    }
 
     /** Publishing a different snapshot wakes all activity tiles conservatively. */
     public void setOccupancy(RigidBodyOccupancyIndex.Snapshot snapshot) {
@@ -168,6 +223,7 @@ public final class Simulation {
         moved[ny * world.width() + nx] = true;
         if (target == Material.WATER) moved[y * world.width() + x] = true;
         if (instrument) movements++;
+        if(recoveryTestCheckpoint!=null) recoveryTestCheckpoint.run();
         return true;
     }
 }
