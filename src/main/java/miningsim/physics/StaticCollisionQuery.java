@@ -53,6 +53,10 @@ public final class StaticCollisionQuery {
     }
     Result queryBruteForce(RigidBody body) { return query(body,false); }
     private Result query(RigidBody body,boolean accelerated) {
+        return query(body,accelerated,Double.POSITIVE_INFINITY);
+    }
+    Result queryHeldValidation(RigidBody body,double maxPenetration) { return query(body,true,maxPenetration); }
+    private Result query(RigidBody body,boolean accelerated,double maxPenetration) {
         Objects.requireNonNull(body);
         var bounds = body.geometry().bounds(body.xCells(), body.yCells(), body.angleRadians());
         int left = clampFloor(bounds.minX(), world.width());
@@ -125,6 +129,8 @@ public final class StaticCollisionQuery {
                 if (contacts.size() > 1000) throw new IllegalStateException("Static contact reduction limit exceeded");
             }
         }
+        if(Double.isFinite(maxPenetration)) for(var contact:contacts) if(contact.penetrationCells()>maxPenetration)
+            throw new IllegalStateException("HELD static penetration exceeds limit for body "+body.id());
         return new Result(reduce(contacts), candidates, checks);
     }
 

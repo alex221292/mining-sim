@@ -153,7 +153,7 @@ M4.5a.3-lite keeps the gameplay sleep window while preventing significant within
 
 M4.5a.4 separates coupled rigid-terrain revision from cellular changes to prevent unnecessary wakes. Its follow-up adds bounded atomic cellular recovery after verified swept-obstruction rollback and explicit blocked diagnostics; persistent obstructions can still require intervention. See `docs/m4-5a4-cellular-after-collapse.md`.
 
-M4.5a.5-design specifies a proposed HELD rigid-body contract for local obstruction isolation; it is design only and HELD is not implemented or proven safe. See `docs/m4-5a5-held-body-design.md`.
+M4.5a.5-design specifies a HELD rigid-body contract; M4.5a.5b.1 implements an internal trial-only solver foundation, not automatic SWEPT recovery. See `docs/m4-5a5-held-body-design.md` and `docs/m4-5a5b1-held-solver.md`.
 
 ### M5 — Better graphics
 

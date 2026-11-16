@@ -17,10 +17,13 @@ public final class BodyContactSolver {
     }
     private static final class Constraint {
         final RigidBody a, b;
+        final boolean heldA, heldB;
         final double nx, ny, ax, ay, bx, by, normalMass, tangentMass, target;
         double normal, tangent;
-        Constraint(RigidBody a, RigidBody b, BodyCollisionQuery.Contact c, Config config) {
+        Constraint(RigidBody a, RigidBody b, BodyCollisionQuery.Contact c, Config config) { this(a,b,c,config,false,false); }
+        Constraint(RigidBody a, RigidBody b, BodyCollisionQuery.Contact c, Config config,boolean heldA,boolean heldB) {
             this.a = a; this.b = b; nx = c.normalX(); ny = c.normalY();
+            this.heldA=heldA; this.heldB=heldB;
             ax = (c.pointX() - a.xCells()) * 0.1; ay = (c.pointY() - a.yCells()) * 0.1;
             bx = (c.pointX() - b.xCells()) * 0.1; by = (c.pointY() - b.yCells()) * 0.1;
             if (!Double.isFinite(nx) || !Double.isFinite(ny) || Math.abs(nx * nx + ny * ny - 1) > 1e-6)
@@ -33,14 +36,16 @@ public final class BodyContactSolver {
         }
         double effective(double x, double y) {
             double ca=ax*y-ay*x, cb=bx*y-by*x;
-            return 1/a.geometry().massKg()+1/b.geometry().massKg()+ca*ca/a.geometry().inertiaKgMetresSquared()+cb*cb/b.geometry().inertiaKgMetresSquared();
+            if(!heldA && !heldB) return 1/a.geometry().massKg()+1/b.geometry().massKg()+ca*ca/a.geometry().inertiaKgMetresSquared()+cb*cb/b.geometry().inertiaKgMetresSquared();
+            return (heldA?0:1/a.geometry().massKg()+ca*ca/a.geometry().inertiaKgMetresSquared())
+                    +(heldB?0:1/b.geometry().massKg()+cb*cb/b.geometry().inertiaKgMetresSquared());
         }
         double relative(double x, double y) {
             double vx=b.velocityXMetresPerSecond()-b.angularVelocityRadiansPerSecond()*by-a.velocityXMetresPerSecond()+a.angularVelocityRadiansPerSecond()*ay;
             double vy=b.velocityYMetresPerSecond()+b.angularVelocityRadiansPerSecond()*bx-a.velocityYMetresPerSecond()-a.angularVelocityRadiansPerSecond()*ax;
             return vx*x+vy*y;
         }
-        void impulse(double x, double y) { a.applyImpulse(-x,-y,ax,ay); b.applyImpulse(x,y,bx,by); }
+        void impulse(double x, double y) { if(!heldA) a.applyImpulse(-x,-y,ax,ay); if(!heldB) b.applyImpulse(x,y,bx,by); }
         void solve(Config config) {
             double next=Math.max(0,normal+(target-relative(nx,ny))/normalMass), change=next-normal; normal=next;
             impulse(change*nx,change*ny);
@@ -56,9 +61,16 @@ public final class BodyContactSolver {
         private Prepared(List<BodyCollisionQuery.Contact> contacts, Map<Long, RigidBody> bodies) {
             for (var c:contacts) constraints.add(new Constraint(Objects.requireNonNull(bodies.get(c.bodyA())),Objects.requireNonNull(bodies.get(c.bodyB())),c,config));
         }
+        private Prepared(List<BodyCollisionQuery.Contact> contacts, Map<Long, RigidBody> bodies,java.util.Set<Long> held) {
+            for(var c:contacts) {
+                boolean a=held.contains(c.bodyA()),b=held.contains(c.bodyB());
+                if(!a || !b) constraints.add(new Constraint(Objects.requireNonNull(bodies.get(c.bodyA())),Objects.requireNonNull(bodies.get(c.bodyB())),c,config,a,b));
+            }
+        }
         void iterate() { for (var constraint:constraints) constraint.solve(config); }
     }
     Prepared prepare(List<BodyCollisionQuery.Contact> contacts, Map<Long, RigidBody> bodies) { return new Prepared(contacts, bodies); }
+    Prepared prepare(List<BodyCollisionQuery.Contact> contacts, Map<Long, RigidBody> bodies,java.util.Set<Long> held) { return held.isEmpty()?prepare(contacts,bodies):new Prepared(contacts,bodies,held); }
     int iterations() { return config.iterations(); }
     public void solve(List<BodyCollisionQuery.Contact> contacts, Map<Long, RigidBody> bodies) {
         var constraints=new ArrayList<Constraint>();

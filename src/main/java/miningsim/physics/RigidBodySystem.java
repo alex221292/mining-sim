@@ -59,6 +59,8 @@ public final class RigidBodySystem {
     }
     public static final double TICK_SECONDS = 1.0 / 60.0;
     public static final double GRAVITY_METRES_PER_SECOND_SQUARED = 9.81;
+    /** Maximum discrete contact penetration accepted for any HELD participant, in cells. */
+    static final double MAX_HELD_PENETRATION_CELLS = 0.1;
     private final FragmentRegistry registry;
     private final int substeps;
     private final StaticContactSolver solver;
@@ -206,7 +208,10 @@ public final class RigidBodySystem {
     }
 
     /** Explicit tick, independent of wall time and rendering. */
-    public void step() {
+    public void step() { step(java.util.Set.of()); }
+    /** Single trial only; the caller owns the immutable constraint set and any outer transaction. */
+    void step(java.util.Set<Long> heldIds) {
+        var held=java.util.Set.copyOf(heldIds);
         var original = new TreeMap<>(bodies);
         var states = new java.util.ArrayList<RigidBody.State>(original.size());
         for (var body : original.values()) states.add(body.state());
@@ -220,6 +225,14 @@ public final class RigidBodySystem {
         try {
             bodyQueryNanos=bodySolverNanos=0; maxPositionCorrection=0;
             synchronize();
+            if(!held.isEmpty()) {
+                if(bodyQuery==null || solver==null) throw new IllegalStateException("HELD requires shared coupled solver");
+                if(!bodies.keySet().containsAll(held)) throw new IllegalArgumentException("Unknown HELD body ID");
+                for(var body:bodies.values()) if(held.contains(body.id())) {
+                    body.wake(); body.setVelocity(0,0,0);
+                    solver.validateHeld(body,MAX_HELD_PENETRATION_CELLS);
+                }
+            }
             checkpoint(Checkpoint.AFTER_SYNC);
             if(coupledTrace!=null) for(var body:bodies.values()) trace(body);
             if (solver != null) solver.resetDiagnostics();
@@ -227,7 +240,7 @@ public final class RigidBodySystem {
                 interactionWork = new InteractionWork();
                 if (!bodies.keySet().containsAll(lastSuccessfulBodyIds) || solver != null && observedWorldRevision >= 0 && observedWorldRevision != solver.worldRevision()) wakeAll();
                 checkpoint(Checkpoint.AFTER_WAKE);
-                sharedStep();
+                sharedStep(held);
                 profile=new Profile(solver==null?0:solver.queryNanos(),solver==null?0:solver.solverNanos(),bodyQueryNanos,bodySolverNanos,maxPositionCorrection,solver==null?0:solver.maxPenetration());
                 if (solver != null) observedWorldRevision = solver.worldRevision();
                 lastSuccessfulBodyIds = java.util.Set.copyOf(bodies.keySet());
@@ -287,11 +300,11 @@ public final class RigidBodySystem {
     }
 
     /** All bodies are integrated to the same time before pair detection. */
-    private void sharedStep() {
+    private void sharedStep(java.util.Set<Long> held) {
         // A fully sleeping set has no integration or constraint work. World edits and
         // removed bodies have already woken it; a newly inserted body starts awake.
         // Still perform the bounded support/contact observation once per fixed tick.
-        if (!bodies.isEmpty() && bodies.values().stream().allMatch(RigidBody::sleeping)) {
+        if (held.isEmpty() && !bodies.isEmpty() && bodies.values().stream().allMatch(RigidBody::sleeping)) {
             checkpoint(Checkpoint.BEFORE_SUPPORT);
             if (solver != null) for (var body : bodies.values()) {
                 solver.supported(body);
@@ -304,6 +317,7 @@ public final class RigidBodySystem {
             motionDiagnostics=new MotionDiagnostics(substeps,0,0,0,0,0);
             return;
         }
+        if(!held.isEmpty()) queryBodies(held);
         double dt = TICK_SECONDS / substeps, maxTravel = 0, maxDisplacement = 0, maxAngle = 0;
         var initialStates=new TreeMap<Long,RigidBody.State>();
         for(var body:bodies.values()) initialStates.put(body.id(),body.state());
@@ -317,16 +331,16 @@ public final class RigidBodySystem {
             double remaining = dt;
             do {
                 // Wake potentially intersecting sleep islands before advancing either participant.
-                wakeNearby(remaining);
+                wakeNearby(remaining,held);
                 double required = 1;
                 int awake = 0;
-                for (var body : bodies.values()) if (!body.sleeping()) { awake++; required = Math.max(required, Math.ceil(travelBound(body, remaining) / motionConfig.maxTravelCells())); }
+                for (var body : bodies.values()) if (!body.sleeping() && !held.contains(body.id())) { awake++; required = Math.max(required, Math.ceil(travelBound(body, remaining) / motionConfig.maxTravelCells())); }
                 if (required > motionConfig.maxMicrostepsPerBody() - shared
                         || required * awake > motionConfig.maxTotalMicrosteps() - work)
                     throw new MotionBudgetException("Shared schedule requests " + required + " microsteps with " + bodies.size() + " bodies; remaining body="
                             + (motionConfig.maxMicrostepsPerBody() - shared) + ", total=" + (motionConfig.maxTotalMicrosteps() - work));
                 double interval = remaining / required;
-                for (var body : bodies.values()) if (!body.sleeping()) {
+                for (var body : bodies.values()) if (!body.sleeping() && !held.contains(body.id())) {
                     int count = perBody.merge(body.id(), 1, Integer::sum);
                     maxPerBody = Math.max(maxPerBody, count);
                     maxTravel = Math.max(maxTravel, travelBound(body, interval));
@@ -338,15 +352,15 @@ public final class RigidBodySystem {
                     maxAngle = Math.max(maxAngle, Math.abs(body.angleRadians() - angle));
                 }
                 var staticConstraints = new java.util.ArrayList<StaticContactSolver.Prepared>();
-                if (solver != null) for (var body : bodies.values()) if (!body.sleeping()) staticConstraints.add(solver.prepare(body));
+                if (solver != null) for (var body : bodies.values()) if (!body.sleeping() && !held.contains(body.id())) staticConstraints.add(solver.prepare(body));
                 checkpoint(Checkpoint.AFTER_STATIC_PREPARE);
                 var dynamicContacts = queryBodies();
                 for(var contact:dynamicContacts) noteRelativeSettlingDisturbance(contact,disturbed);
                 checkpoint(Checkpoint.AFTER_PAIR_QUERY);
-                if (dynamicContacts.stream().anyMatch(c -> bodies.get(c.bodyA()).sleeping() != bodies.get(c.bodyB()).sleeping()))
+                if (dynamicContacts.stream().anyMatch(c -> !held.contains(c.bodyA()) && !held.contains(c.bodyB()) && bodies.get(c.bodyA()).sleeping() != bodies.get(c.bodyB()).sleeping()))
                     throw new IllegalStateException("Sleeping body reached without pre-integration wake");
-                var activeContacts = dynamicContacts.stream().filter(c -> !bodies.get(c.bodyA()).sleeping() || !bodies.get(c.bodyB()).sleeping()).toList();
-                var dynamicConstraints = bodySolver.prepare(activeContacts, bodies);
+                var activeContacts = dynamicContacts.stream().filter(c -> (!held.contains(c.bodyA()) && !bodies.get(c.bodyA()).sleeping()) || (!held.contains(c.bodyB()) && !bodies.get(c.bodyB()).sleeping())).toList();
+                var dynamicConstraints = bodySolver.prepare(activeContacts, bodies,held);
                 int iterations = Math.max(bodySolver.iterations(), solver == null ? 0 : solver.velocityIterations());
                 for (int pass = 0; pass < iterations; pass++) {
                     if (solver != null && pass < solver.velocityIterations()) for (var constraint : staticConstraints) constraint.iterate();
@@ -360,20 +374,22 @@ public final class RigidBodySystem {
                 for(var body:bodies.values()) noteSettlingDisturbance(body,disturbed);
                 checkpoint(Checkpoint.AFTER_VELOCITY);
                 for (int pass = 0; pass < interactionConfig.positionIterations(); pass++) {
-                    if (solver != null && pass < solver.positionIterations()) for (var body : bodies.values()) if (!body.sleeping()) { maxPositionCorrection=Math.max(maxPositionCorrection,solver.correctPosition(body)); trace(body); }
+                    if (solver != null && pass < solver.positionIterations()) for (var body : bodies.values()) if (!body.sleeping() && !held.contains(body.id())) { maxPositionCorrection=Math.max(maxPositionCorrection,solver.correctPosition(body)); trace(body); }
                     var contacts = queryBodies();
                     for (var contact : contacts) {
                         var a = bodies.get(contact.bodyA()); var b = bodies.get(contact.bodyB());
-                        if (a.sleeping() && b.sleeping()) continue;
-                        if (a.sleeping() || b.sleeping()) throw new IllegalStateException("Position correction reached a sleeping body after integration");
-                        double invA = 1 / a.geometry().massKg(), invB = 1 / b.geometry().massKg();
+                        boolean ha=held.contains(a.id()),hb=held.contains(b.id());
+                        if ((ha || a.sleeping()) && (hb || b.sleeping())) continue;
+                        if ((!ha && a.sleeping()) || (!hb && b.sleeping())) throw new IllegalStateException("Position correction reached a sleeping body after integration");
+                        double invA = ha?0:1 / a.geometry().massKg(), invB = hb?0:1 / b.geometry().massKg();
                         double correction = Math.min(0.2, Math.max(0, contact.penetrationCells() - 0.01) * 0.2);
                         maxPositionCorrection=Math.max(maxPositionCorrection,correction);
-                        a.translate(-contact.normalX() * correction * invA / (invA + invB), -contact.normalY() * correction * invA / (invA + invB));
-                        b.translate(contact.normalX() * correction * invB / (invA + invB), contact.normalY() * correction * invB / (invA + invB));
+                        if(!ha) a.translate(-contact.normalX() * correction * invA / (invA + invB), -contact.normalY() * correction * invA / (invA + invB));
+                        if(!hb) b.translate(contact.normalX() * correction * invB / (invA + invB), contact.normalY() * correction * invB / (invA + invB));
                         trace(a); trace(b);
                     }
                 }
+                if(!held.isEmpty()) queryBodies(held);
                 checkpoint(Checkpoint.AFTER_POSITION);
                 if(coupledTrace!=null) for(var body:bodies.values()) trace(body);
                 shared = Math.incrementExact(shared); work = Math.addExact(work, awake); remaining = required == 1 ? 0 : remaining - interval;
@@ -381,6 +397,7 @@ public final class RigidBodySystem {
         }
         checkpoint(Checkpoint.BEFORE_SUPPORT);
         var supported = new java.util.HashSet<Long>();
+        supported.addAll(held);
         if (solver != null) for (var body : bodies.values()) {
             if (solver.supported(body)) supported.add(body.id());
             checkpoint(Checkpoint.DURING_SUPPORT_EVALUATION);
@@ -392,7 +409,7 @@ public final class RigidBodySystem {
             if (c.normalY() > 0.5 && supported.contains(c.bodyB())) supported.add(c.bodyA());
             if (c.normalY() < -0.5 && supported.contains(c.bodyA())) supported.add(c.bodyB());
         }
-        updateIslandSleep(contacts,supported,initialStates,disturbed);
+        updateIslandSleep(contacts,supported,initialStates,disturbed,held);
         int sleeping = 0; for (var body : bodies.values()) if (body.sleeping()) sleeping++;
         interactionDiagnostics = new InteractionDiagnostics(shared,interactionWork.pairs,interactionWork.overlapping,interactionWork.checks,
                 interactionWork.raw,interactionWork.reduced,interactionWork.iterations,sleeping,interactionWork.woken,interactionWork.penetration);
@@ -400,12 +417,13 @@ public final class RigidBodySystem {
         motionDiagnostics = new MotionDiagnostics(substeps, work, maxPerBody, maxTravel, maxDisplacement, maxAngle);
     }
     /** Contact-connected bodies may sleep only together after the whole supported island is quiet. */
-    private void updateIslandSleep(List<BodyCollisionQuery.Contact> contacts,java.util.Set<Long> supported,TreeMap<Long,RigidBody.State> initialStates,java.util.Set<Long> disturbed) {
+    private void updateIslandSleep(List<BodyCollisionQuery.Contact> contacts,java.util.Set<Long> supported,TreeMap<Long,RigidBody.State> initialStates,java.util.Set<Long> disturbed,java.util.Set<Long> held) {
         var ordered=bodies(); int n=ordered.size(); int[] parent=new int[n];
         var indices=new TreeMap<Long,Integer>();
         for(int i=0;i<n;i++) { parent[i]=i; indices.put(ordered.get(i).id(),i); }
         for(var c:contacts) {
             consumeIslandWork();
+            if(held.contains(c.bodyA()) || held.contains(c.bodyB())) continue;
             int a=islandRoot(parent,indices.get(c.bodyA())),b=islandRoot(parent,indices.get(c.bodyB()));
             if(a!=b) parent[Math.max(a,b)]=Math.min(a,b);
         }
@@ -422,7 +440,7 @@ public final class RigidBodySystem {
                     && rotation<sleepConfig.angularSpeed()*TICK_SECONDS;
             minimum[root]=Math.min(minimum[root],body.sleepTicks());
         }
-        for(int i=0;i<n;i++) { int root=islandRoot(parent,i); ordered.get(i).updateIslandSleep(eligible[root],minimum[root],sleepConfig); }
+        for(int i=0;i<n;i++) { int root=islandRoot(parent,i); if(!held.contains(ordered.get(i).id())) ordered.get(i).updateIslandSleep(eligible[root],minimum[root],sleepConfig); }
     }
     private void noteSettlingDisturbance(RigidBody body,java.util.Set<Long> disturbed) {
         // Five times the configured quiet linear speed or ten times the quiet
@@ -461,9 +479,9 @@ public final class RigidBodySystem {
             if (body.sleeping()) { body.wake(); interactionWork.woken++; }
         }
     }
-    private void wakeNearby(double remaining) {
+    private void wakeNearby(double remaining,java.util.Set<Long> held) {
         var queue = new java.util.ArrayDeque<RigidBody>();
-        for (var body : bodies.values()) if (!body.sleeping()) queue.add(body);
+        for (var body : bodies.values()) if (!body.sleeping() && !held.contains(body.id())) queue.add(body);
         while (!queue.isEmpty()) {
             var source = queue.removeFirst();
             var a = source.geometry().bounds(source.xCells(),source.yCells(),source.angleRadians());
@@ -472,7 +490,7 @@ public final class RigidBodySystem {
                 interactionWork.wakeWork = Math.incrementExact(interactionWork.wakeWork);
                 if (interactionWork.wakeWork > interactionConfig.maxWakeWork()) throw new MotionBudgetException("Wake propagation limit exceeded: " + interactionWork.wakeWork);
                 checkpoint(Checkpoint.DURING_WAKE_PROPAGATION);
-                if (!other.sleeping()) continue;
+                if (!other.sleeping() || held.contains(other.id())) continue;
                 var b = other.geometry().bounds(other.xCells(),other.yCells(),other.angleRadians());
                 if (a.minX() - margin <= b.maxX() && a.maxX() + margin >= b.minX()
                         && a.minY() - margin <= b.maxY() && a.maxY() + margin >= b.minY()) {
@@ -482,8 +500,11 @@ public final class RigidBodySystem {
         }
     }
     private List<BodyCollisionQuery.Contact> queryBodies() {
+        return queryBodies(java.util.Set.of());
+    }
+    private List<BodyCollisionQuery.Contact> queryBodies(java.util.Set<Long> held) {
         long start=profiling?System.nanoTime():0;
-        var r = bodyQuery.query(bodies());
+        var r = held.isEmpty()?bodyQuery.query(bodies()):bodyQuery.queryHeldValidation(bodies(),held,MAX_HELD_PENETRATION_CELLS);
         if(profiling) bodyQueryNanos+=System.nanoTime()-start;
         interactionWork.pairs = Math.addExact(interactionWork.pairs, r.candidatePairs());
         interactionWork.overlapping = Math.addExact(interactionWork.overlapping, r.overlappingPairs());

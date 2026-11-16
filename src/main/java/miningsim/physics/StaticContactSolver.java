@@ -113,6 +113,9 @@ public final class StaticContactSolver {
         for (var contact : query(body)) if (contact.normalY() > 0.5) return true;
         return false;
     }
+    void validateHeld(RigidBody body,double maxPenetrationCells) {
+        query.queryHeldValidation(body,maxPenetrationCells);
+    }
     double correctPosition(RigidBody body) {
         var current = query(body);
         StaticCollisionQuery.Contact deepest = null;

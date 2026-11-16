@@ -26,9 +26,15 @@ public final class BodyCollisionQuery {
     public Result query(List<RigidBody> input) {
         return query(input,true);
     }
+    Result queryHeldValidation(List<RigidBody> input,java.util.Set<Long> held,double maxPenetration) {
+        return query(input,true,held,maxPenetration);
+    }
     /** Brute-force reference, retained for geometry regression tests. */
     Result queryBruteForce(List<RigidBody> input) { return query(input,false); }
     private Result query(List<RigidBody> input,boolean accelerated) {
+        return query(input,accelerated,java.util.Set.of(),Double.POSITIVE_INFINITY);
+    }
+    private Result query(List<RigidBody> input,boolean accelerated,java.util.Set<Long> held,double maxPenetration) {
         var bodies = new ArrayList<>(input); bodies.sort(Comparator.comparingLong(RigidBody::id));
         for (int i = 1; i < bodies.size(); i++)
             if (bodies.get(i - 1).id() == bodies.get(i).id()) throw new IllegalArgumentException("Duplicate body ID");
@@ -67,6 +73,8 @@ public final class BodyCollisionQuery {
                 var hit = SquareCollision.intersect(new SquareCollision.Square(pa.x(), pa.y(), a.angleRadians()),
                         new SquareCollision.Square(pb.x(), pb.y(), b.angleRadians()));
                 if (hit == null) continue;
+                if((held.contains(a.id()) || held.contains(b.id())) && hit.penetrationCells()>maxPenetration)
+                    throw new IllegalStateException("HELD body penetration exceeds limit: "+hit.penetrationCells());
                 rawCount = Math.incrementExact(rawCount);
                 if (rawCount > limits.rawContacts()) throw new IllegalStateException("Body raw-contact limit exceeded: " + rawCount + " > " + limits.rawContacts());
                 pairContacts.add(new Contact(a.id(), b.id(), hit.normalX(), hit.normalY(), hit.penetrationCells(), hit.pointX(), hit.pointY()));
