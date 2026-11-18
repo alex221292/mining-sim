@@ -24,6 +24,7 @@ public final class RockConnectivity implements World.ChangeSink {
     private long lastAdditionRevision, lastDisruptionRevision;
     private boolean revisionExhausted;
     private int traversalDepth;
+    private SettledRockRegistry settled;
 
     public RockConnectivity(World world) {
         this.world = Objects.requireNonNull(world);
@@ -47,8 +48,32 @@ public final class RockConnectivity implements World.ChangeSink {
         if (revision == Long.MAX_VALUE) revisionExhausted = true;
         else revision++;
     }
+    void attachSettled(SettledRockRegistry registry) {
+        attached();
+        if(settled!=null) throw new IllegalStateException("Settled registry already attached");
+        if(traversalDepth!=0) throw new IllegalStateException("Topology traversal in progress");
+        settled=Objects.requireNonNull(registry);
+    }
+    void checkOwnershipMutation() {
+        attached();
+        if(traversalDepth!=0) throw new IllegalStateException("Topology traversal in progress");
+    }
+    void ownershipChanged() {
+        dirty(); invalidationRevision=revision; lastDisruptionRevision=revision;
+    }
+    private boolean sameOwner(int x1,int y1,int x2,int y2) {
+        return settled==null || settled.ownerAt(x1,y1)==settled.ownerAt(x2,y2);
+    }
+    /** Zero denotes ordinary, unowned STONE. */
+    public long settledOwnerAt(int x,int y) {
+        attached();
+        if(!world.contains(x,y)) throw new IndexOutOfBoundsException();
+        return settled==null?0:settled.ownerAt(x,y);
+    }
+    @Override public boolean allowDetach() { return settled==null || !settled.hasOwnedCells(); }
     @Override public void changed(int x, int y, byte previous, byte next) {
         if ((previous == Material.STONE.id()) == (next == Material.STONE.id())) return;
+        if(settled!=null && previous==Material.STONE.id()) settled.stoneRemoved(x,y);
         int i = y * width + x;
         broken.clear(i * 2); broken.clear(i * 2 + 1);
         if (x > 0) broken.clear((i - 1) * 2);
@@ -64,6 +89,7 @@ public final class RockConnectivity implements World.ChangeSink {
         dirty();
         for (var c : changes) {
             if ((c.expected() == Material.STONE) == (c.replacement() == Material.STONE)) continue;
+            if(settled!=null && c.expected()==Material.STONE) settled.stoneRemoved(c.x(),c.y());
             if(c.replacement()==Material.STONE) lastAdditionRevision=revision; else lastDisruptionRevision=revision;
             int i = c.y() * width + c.x();
             broken.clear(i * 2); broken.clear(i * 2 + 1);
@@ -73,7 +99,11 @@ public final class RockConnectivity implements World.ChangeSink {
         }
     }
     @Override public boolean allowBatch() { return traversalDepth == 0; }
-    @Override public void invalidated() { broken = new BitSet(); dirty(); invalidationRevision = revision; }
+    @Override public void invalidated() {
+        if(settled!=null) settled.worldInvalidated();
+        if(settled==null || !settled.hasOwnedCells()) broken = new BitSet();
+        dirty(); invalidationRevision = revision;
+    }
 
     /** Canonical bit index for orthogonally adjacent in-bounds cells. */
     public int bondKey(int x1, int y1, int x2, int y2) {
@@ -87,6 +117,7 @@ public final class RockConnectivity implements World.ChangeSink {
         attached();
         int key = bondKey(x1, y1, x2, y2);
         if (world.get(x1, y1) != Material.STONE || world.get(x2, y2) != Material.STONE) return BondState.ABSENT;
+        if(!sameOwner(x1,y1,x2,y2)) return BondState.ABSENT;
         return broken.get(key) ? BondState.BROKEN : BondState.INTACT;
     }
     /** Incarnation of the current pair of endpoints, unchanged by breaking the bond. */
@@ -125,8 +156,11 @@ public final class RockConnectivity implements World.ChangeSink {
         int key = bondKey(x1, y1, x2, y2);
         if (world.get(x1, y1) != Material.STONE || world.get(x2, y2) != Material.STONE)
             throw new IllegalArgumentException("Bond requires two stone cells");
+        if(!sameOwner(x1,y1,x2,y2)) throw new IllegalArgumentException("No bond across settled ownership boundary");
         if (broken.get(key)) return false;
-        broken.set(key); dirty(); lastDisruptionRevision=revision; return true;
+        broken.set(key);
+        if(settled!=null && settledOwnerAt(x1,y1)!=0) settled.bondBroken(x1,y1);
+        dirty(); lastDisruptionRevision=revision; return true;
     }
     public boolean pending() { attached(); return pending; }
     public boolean owns(World candidate) { attached(); return world == candidate; }
@@ -171,8 +205,12 @@ public final class RockConnectivity implements World.ChangeSink {
     }
     private void visit(int from, int to, int x, int y) {
         Material material = world.get(x, y);
-        if (material == Material.BEDROCK) { foundations[currentId] = true; return; }
+        if (material == Material.BEDROCK) {
+            if(settled==null || settled.ownerAt(from%width,from/width)==0) foundations[currentId] = true;
+            return;
+        }
         if (material != Material.STONE || seen[to] == generation) return;
+        if(settled!=null && !sameOwner(from%width,from/width,x,y)) return;
         int key = Math.min(from, to) * 2 + (Math.abs(from - to) == 1 && from / width == to / width ? 0 : 1);
         if (broken.get(key)) return;
         seen[to] = generation; labels[to] = currentId; sizes[currentId]++; queue[tail++] = to;

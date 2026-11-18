@@ -23,6 +23,8 @@ public final class World {
             for (CellChange c : changes) changed(c.x(), c.y(), c.expected().id(), c.replacement().id());
         }
         default boolean allowBatch() { return true; }
+        /** Refuse replacing the sole owner while it contains unrecoverable metadata. */
+        default boolean allowDetach() { return true; }
     }
     public static final int ACTIVITY_TILE_SIZE = 32;
     public static final int CHUNK_SIZE = Chunk.SIZE;
@@ -66,7 +68,11 @@ public final class World {
 
     public Mode mode() { return mode; }
     /** Replacing or attaching a consumer requires it to rebuild from the current world. */
-    public void setChangeSink(ChangeSink sink) { changeSink = sink; if (sink != null) sink.invalidated(); }
+    public void setChangeSink(ChangeSink sink) {
+        if(changeSink!=null && !changeSink.allowDetach())
+            throw new IllegalStateException("Cannot replace or invalidate owner with live settled metadata");
+        changeSink = sink; if (sink != null) sink.invalidated();
+    }
     public boolean hasChangeSink(ChangeSink sink) { return sink != null && changeSink == sink; }
     public boolean hasChangeSink() { return changeSink != null; }
     public int width() { return width; }

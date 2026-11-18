@@ -12,7 +12,7 @@ import miningsim.world.World;
 
 /** Read-only preparation; ownership transfer is performed by ExtractionCommit. */
 public final class ExtractionPlanner {
-    public enum Status { READY, PENDING, NOT_STONE, SUPPORTED, TOO_LARGE, STALE, OVERFLOW }
+    public enum Status { READY, PENDING, NOT_STONE, SUPPORTED, TOO_LARGE, STALE, OVERFLOW, SETTLED_OWNERSHIP }
     public record Plan(World sourceWorld, RockConnectivity connectivity, long revision, int componentId,
                        int originX, int originY, List<Cell> worldCells, FragmentDescriptor descriptor) {
         public Plan { worldCells = List.copyOf(worldCells); }
@@ -27,6 +27,8 @@ public final class ExtractionPlanner {
         if (connectivity.pending()) return new Result(Status.PENDING,null);
         long revision=connectivity.revision();
         if (world.get(x,y) != Material.STONE) return new Result(Status.NOT_STONE,null);
+        // The generic-STONE extractor cannot preserve settled substance or ownership.
+        if (connectivity.settledOwnerAt(x,y)!=0) return new Result(Status.SETTLED_OWNERSHIP,null);
         int component=connectivity.componentAt(x,y), ordinal=connectivity.componentOrdinal(component);
         if (ordinal < 0) return new Result(Status.STALE,null);
         if (connectivity.foundationConnected(ordinal)) return new Result(Status.SUPPORTED,null);

@@ -155,6 +155,8 @@ M4.5a.4 separates coupled rigid-terrain revision from cellular changes to preven
 
 M4.5a.5-design specifies a HELD rigid-body contract; M4.5a.5b.1 implements an internal trial-only solver foundation, not automatic SWEPT recovery. See `docs/m4-5a5-held-body-design.md` and `docs/m4-5a5b1-held-solver.md`.
 
+M4.5b.1 adds a settled-rock ownership registry and ownership-aware rock bond boundaries. Settling, re-detachment and sandbox integration are not implemented. See `docs/m4-5b1-settled-ownership.md`.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.
