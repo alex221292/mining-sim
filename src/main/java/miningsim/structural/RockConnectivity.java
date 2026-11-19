@@ -25,6 +25,9 @@ public final class RockConnectivity implements World.ChangeSink {
     private boolean revisionExhausted;
     private int traversalDepth;
     private SettledRockRegistry settled;
+    private java.util.function.BooleanSupplier testBatchVeto;
+    private Runnable testBatchObserver;
+    void setTestBatchObserver(java.util.function.BooleanSupplier veto,Runnable observer) { testBatchVeto=veto; testBatchObserver=observer; }
 
     public RockConnectivity(World world) {
         this.world = Objects.requireNonNull(world);
@@ -97,8 +100,9 @@ public final class RockConnectivity implements World.ChangeSink {
             if (c.y() > 0) broken.clear((i - width) * 2 + 1);
             cellIncarnations[i] = revision;
         }
+        if(testBatchObserver!=null) testBatchObserver.run();
     }
-    @Override public boolean allowBatch() { return traversalDepth == 0; }
+    @Override public boolean allowBatch() { return traversalDepth == 0 && (testBatchVeto==null || testBatchVeto.getAsBoolean()); }
     @Override public void invalidated() {
         if(settled!=null) settled.worldInvalidated();
         if(settled==null || !settled.hasOwnedCells()) broken = new BitSet();

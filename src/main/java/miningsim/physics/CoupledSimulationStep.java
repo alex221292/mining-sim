@@ -31,6 +31,7 @@ public final class CoupledSimulationStep {
     private long rollbackWorldRevision;
     private boolean sweepRolledBack;
     private RecoveryOutcome recoveryOutcome=RecoveryOutcome.NOT_ATTEMPTED;
+    private long attempts;
     private SweepObstruction sweepObstruction;
     private static final class SweepObstruction extends IllegalStateException {
         final int x,y;
@@ -62,10 +63,13 @@ public final class CoupledSimulationStep {
     public String lastFailure() { return lastFailure; }
     public FailureStage lastFailureStage() { return lastFailureStage; }
     public RecoveryOutcome recoveryOutcome() { return recoveryOutcome; }
+    public long attempts() { return attempts; }
+    boolean owns(World candidate,RigidBodySystem system) { return world==candidate && physics==system; }
     public PhaseTimes phaseTimes() { return new PhaseTimes(physicsNanos,occupancyNanos,planningNanos,commitNanos,cellularNanos); }
     /** Change only on the simulation owner thread, between ticks. */
     public void enableProfiling(boolean enabled) { instrument=enabled; }
     public void step() {
+        attempts=Math.incrementExact(attempts);
         var checkpoint=physics.coupledCheckpoint(); long worldRevision=world.mutationRevision();
         var oldSnapshot=occupancy.snapshot(); sweepRolledBack=false; sweepObstruction=null; recoveryOutcome=RecoveryOutcome.NOT_ATTEMPTED;
         var traces=new TreeMap<Long,Trace>();

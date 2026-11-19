@@ -95,6 +95,77 @@ public final class RigidBodySystem {
         public void publish() { if(!valid()) throw new IllegalStateException("Physics membership changed"); bodies=next; }
         private List<RigidBody> bodies() { return List.copyOf(next.values()); }
     }
+    /** Prepared rigid membership and occupancy removal for a settling commit. */
+    public final class PreparedSettlingRemoval {
+        private final TreeMap<Long,RigidBody> expected,next;
+        private final java.util.ArrayList<RigidBody.State> states=new java.util.ArrayList<>();
+        private final FragmentRegistry.PreparedRemoval fragment;
+        private final RigidBodyOccupancyIndex.Prepared occupancy;
+        private PreparedSettlingRemoval(TreeMap<Long,RigidBody> expected,TreeMap<Long,RigidBody> next,
+                                        FragmentRegistry.PreparedRemoval fragment,RigidBodyOccupancyIndex.Prepared occupancy) {
+            this.expected=expected; this.next=next; this.fragment=fragment; this.occupancy=occupancy;
+            for(var body:expected.values()) states.add(body.state());
+        }
+        public long bodyId() { return fragment.fragment().id(); }
+        public miningsim.fragment.RockFragment fragment() { return fragment.fragment(); }
+        public boolean owns(miningsim.world.World world) { return occupancy.owns(world) && coupledTo(world); }
+        public boolean valid() {
+            if(!bodies.equals(expected) || !fragment.valid() || !occupancy.valid()) return false;
+            int i=0; for(var body:expected.values()) if(!body.state().equals(states.get(i++))) return false;
+            return true;
+        }
+        public void publish(Object token) {
+            if(!miningsim.world.World.isSettlingPublicationToken(token)) throw new IllegalStateException("Not a settling publication");
+            fragment.publishSettling(token); bodies=next; occupancy.publish();
+        }
+    }
+    public PreparedSettlingRemoval prepareSettlingRemoval(long bodyId,RigidBodyOccupancyIndex occupancy,long generation) {
+        Objects.requireNonNull(occupancy);
+        var body=bodies.get(bodyId); if(body==null) throw new IllegalArgumentException("Unknown body ID");
+        var old=occupancy.snapshot(); var current=occupancy.prepare(this,old.diagnostics().generation()).snapshot();
+        if(!current.sameMembership(old)) throw new IllegalStateException("Published occupancy does not match current bodies");
+        var fragment=registry.prepareRemoval(bodyId);
+        if(fragment.fragment()!=body.fragment()) throw new IllegalStateException("Fragment/body ownership mismatch");
+        var expected=new TreeMap<>(bodies); var next=new TreeMap<>(bodies); next.remove(bodyId);
+        var preparedOccupancy=occupancy.prepare(List.copyOf(next.values()),generation);
+        return new PreparedSettlingRemoval(expected,next,fragment,preparedOccupancy);
+    }
+
+    /** Preallocated group membership, fragment removal and occupancy publication. */
+    public final class PreparedGroupSettlingRemoval {
+        private final TreeMap<Long,RigidBody> expected,next;
+        private final java.util.List<RigidBody.State> states;
+        private final FragmentRegistry.PreparedGroupRemoval fragments;
+        private final RigidBodyOccupancyIndex.Prepared occupancy;
+        private PreparedGroupSettlingRemoval(TreeMap<Long,RigidBody> expected,TreeMap<Long,RigidBody> next,
+                FragmentRegistry.PreparedGroupRemoval fragments,RigidBodyOccupancyIndex.Prepared occupancy) {
+            this.expected=expected; this.next=next; this.fragments=fragments; this.occupancy=occupancy;
+            states=expected.values().stream().map(RigidBody::state).toList();
+        }
+        public boolean owns(miningsim.world.World world) { return occupancy.owns(world) && coupledTo(world); }
+        public boolean valid() {
+            if(!bodies.equals(expected) || !fragments.valid() || !occupancy.valid()) return false;
+            int i=0; for(var body:expected.values()) if(!body.state().equals(states.get(i++))) return false;
+            return true;
+        }
+        public void publish(Object token) {
+            if(!miningsim.world.World.isSettlingPublicationToken(token)) throw new IllegalStateException("Not a settling publication");
+            fragments.publishSettling(token); bodies=next; occupancy.publish();
+        }
+    }
+    public PreparedGroupSettlingRemoval prepareGroupSettlingRemoval(java.util.Set<Long> ids,RigidBodyOccupancyIndex occupancy,long generation) {
+        Objects.requireNonNull(ids); Objects.requireNonNull(occupancy);
+        if(ids.isEmpty()) throw new IllegalArgumentException("Empty group");
+        var old=occupancy.snapshot(); var current=occupancy.prepare(this,old.diagnostics().generation()).snapshot();
+        if(!current.sameMembership(old)) throw new IllegalStateException("Published occupancy does not match current bodies");
+        var fragments=registry.prepareGroupRemoval(ids);
+        var expected=new TreeMap<>(bodies); var next=new TreeMap<>(bodies);
+        for(var fragment:fragments.fragments()) {
+            var body=next.remove(fragment.id());
+            if(body==null || body.fragment()!=fragment) throw new IllegalStateException("Fragment/body ownership mismatch");
+        }
+        return new PreparedGroupSettlingRemoval(expected,next,fragments,occupancy.prepare(List.copyOf(next.values()),generation));
+    }
 
     /** Private-to-package checkpoint for the single-owner coupled commit. */
     final class CoupledCheckpoint {

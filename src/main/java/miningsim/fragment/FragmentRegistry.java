@@ -29,6 +29,29 @@ public final class FragmentRegistry {
             fragments=next; mass=nextMass; nextId=nextSequence; revision=nextRevision;
         }
     }
+    /** Prevalidated removal; preparing never changes published membership. */
+    public final class PreparedRemoval {
+        private final List<RockFragment> expected,next;
+        private final RockFragment fragment;
+        private final long expectedRevision,nextRevision,nextMass;
+        private PreparedRemoval(List<RockFragment> expected,List<RockFragment> next,RockFragment fragment,
+                                long expectedRevision,long nextRevision,long nextMass) {
+            this.expected=expected; this.next=next; this.fragment=fragment;
+            this.expectedRevision=expectedRevision; this.nextRevision=nextRevision; this.nextMass=nextMass;
+        }
+        public boolean valid() { return fragments==expected && revision==expectedRevision; }
+        public boolean belongsTo(FragmentRegistry registry) { return FragmentRegistry.this==registry; }
+        public RockFragment fragment() { return fragment; }
+        /** Only inside a validated single-owner publication boundary. */
+        void publish() {
+            if(!valid()) throw new IllegalStateException("Registry changed after removal preparation");
+            fragments=next; revision=nextRevision; mass=nextMass;
+        }
+        public void publishSettling(Object token) {
+            if(!miningsim.world.World.isSettlingPublicationToken(token)) throw new IllegalStateException("Not a settling publication");
+            publish();
+        }
+    }
     public FragmentRegistry(int capacity) {
         if (capacity < 0) throw new IllegalArgumentException("Negative capacity");
         this.capacity = capacity;
@@ -58,5 +81,40 @@ public final class FragmentRegistry {
             fragments=List.copyOf(updated); mass -= removed.massMilligrams(); revision=nextRevision; return true;
         }
         return false;
+    }
+    public PreparedRemoval prepareRemoval(long id) {
+        for(int i=0;i<fragments.size();i++) if(fragments.get(i).id()==id) {
+            var next=new ArrayList<>(fragments); var removed=next.remove(i);
+            return new PreparedRemoval(fragments,List.copyOf(next),removed,revision,Math.incrementExact(revision),Math.subtractExact(mass,removed.massMilligrams()));
+        }
+        throw new IllegalArgumentException("Unknown fragment ID: "+id);
+    }
+
+    /** Prepared removal of a complete group; independent single removals cannot be composed atomically. */
+    public final class PreparedGroupRemoval {
+        private final List<RockFragment> expected, next, removed;
+        private final long expectedRevision, nextRevision, nextMass;
+        private PreparedGroupRemoval(List<RockFragment> expected,List<RockFragment> next,List<RockFragment> removed,long nextMass) {
+            this.expected=expected; this.next=next; this.removed=removed; this.nextMass=nextMass;
+            expectedRevision=revision; nextRevision=Math.incrementExact(revision);
+        }
+        public List<RockFragment> fragments() { return removed; }
+        public boolean valid() { return fragments==expected && revision==expectedRevision; }
+        public void publishSettling(Object token) {
+            if(!miningsim.world.World.isSettlingPublicationToken(token) || !valid())
+                throw new IllegalStateException("Invalid group removal publication");
+            fragments=next; mass=nextMass; revision=nextRevision;
+        }
+    }
+    public PreparedGroupRemoval prepareGroupRemoval(java.util.Set<Long> ids) {
+        Objects.requireNonNull(ids);
+        if(ids.isEmpty() || ids.stream().anyMatch(Objects::isNull)) throw new IllegalArgumentException("Empty or invalid group");
+        var next=new ArrayList<RockFragment>(); var removed=new ArrayList<RockFragment>(); long remaining=mass;
+        for(var fragment:fragments) {
+            if(ids.contains(fragment.id())) { removed.add(fragment); remaining=Math.subtractExact(remaining,fragment.massMilligrams()); }
+            else next.add(fragment);
+        }
+        if(removed.size()!=ids.size()) throw new IllegalArgumentException("Unknown fragment ID");
+        return new PreparedGroupRemoval(fragments,List.copyOf(next),List.copyOf(removed),remaining);
     }
 }

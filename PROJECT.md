@@ -157,6 +157,8 @@ M4.5a.5-design specifies a HELD rigid-body contract; M4.5a.5b.1 implements an in
 
 M4.5b.1 adds a settled-rock ownership registry and ownership-aware rock bond boundaries. Settling, re-detachment and sandbox integration are not implemented. See `docs/m4-5b1-settled-ownership.md`.
 
+M4.5b.2 provides a bounded headless group-settling transaction with separate ownership and idealized BEDROCK support checks. Automatic sandbox settling and re-detachment remain unimplemented; limitations and measurements are in `docs/m4-5b2-group-integration.md`.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.
