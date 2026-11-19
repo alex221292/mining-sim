@@ -11,8 +11,10 @@ import miningsim.physics.RigidBodySystem;
 
 public final class World {
     private static final Object SETTLING_PUBLICATION_TOKEN=new Object();
+    private static final Object REACTIVATION_PUBLICATION_TOKEN=new Object();
     /** Identity test for the unexposed token used only inside commitSettling. */
     public static boolean isSettlingPublicationToken(Object token) { return token==SETTLING_PUBLICATION_TOKEN; }
+    public static boolean isReactivationPublicationToken(Object token) { return token==REACTIVATION_PUBLICATION_TOKEN; }
     public enum Mode { LEGACY, BEDROCK_ENABLED }
     public enum Mutation { CHANGED, NO_OP, REJECTED }
     public enum BatchResult { CHANGED, NO_OP, REJECTED }
@@ -187,6 +189,30 @@ public final class World {
         }
         mutationRevision=nextRevision; rigidTerrainRevision=nextTerrain;
         prepared.publish(SETTLING_PUBLICATION_TOKEN);
+        if(changeSink!=null) changeSink.changedBatch(changes);
+        return BatchResult.CHANGED;
+    }
+    /** Reactivation: publish all ownership transfers before notifying the structural sink. */
+    public BatchResult commitReactivation(miningsim.physics.SettledRockReactivation.Prepared prepared) {
+        Objects.requireNonNull(prepared);
+        if(changeSink!=null && !changeSink.allowBatch()) return BatchResult.REJECTED;
+        if(!prepared.owns(this) || !prepared.valid()) return BatchResult.REJECTED;
+        var changes=prepared.changes(); if(changes.isEmpty()) return BatchResult.REJECTED;
+        CellChange previous=null;
+        for(var change:changes) {
+            if(change.expected()!=Material.STONE || change.replacement()!=Material.AIR || !contains(change.x(),change.y())
+                    || get(change.x(),change.y())!=Material.STONE || previous!=null &&
+                    (change.y()<previous.y() || change.y()==previous.y() && change.x()<=previous.x())) return BatchResult.REJECTED;
+            previous=change;
+        }
+        long nextRevision=Math.incrementExact(mutationRevision),nextTerrain=Math.incrementExact(rigidTerrainRevision);
+        for(var change:changes) {
+            Chunk chunk=chunkAt(change.x(),change.y());
+            chunk.cells[((change.y() & CHUNK_MASK) << CHUNK_SHIFT) | (change.x() & CHUNK_MASK)]=Material.AIR.id();
+            if(trackActivity) changedTiles[(change.y()/ACTIVITY_TILE_SIZE)*tileColumns+change.x()/ACTIVITY_TILE_SIZE]=true;
+        }
+        mutationRevision=nextRevision; rigidTerrainRevision=nextTerrain;
+        prepared.publish(REACTIVATION_PUBLICATION_TOKEN);
         if(changeSink!=null) changeSink.changedBatch(changes);
         return BatchResult.CHANGED;
     }

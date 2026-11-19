@@ -13,15 +13,15 @@ public final class SettledRockRegistry {
     public enum Integrity { INTACT, DAMAGED, REMOVED }
     public record WorldCell(int x,int y) { }
     public record Rock(long id,long sourceFragmentId,FragmentDescriptor descriptor,int originX,int originY,
-                       int remainingCells,long massMilligrams,long generation,Integrity integrity) { }
+                       int remainingCells,long massMilligrams,long generation,Integrity integrity,long reactivatedBodyId) { }
     private static final class Entry {
         final long id,source; final FragmentDescriptor descriptor; final int x,y;
-        int count; long mass,generation; Integrity integrity=Integrity.INTACT;
+        int count; long mass,generation,reactivatedBodyId; Integrity integrity=Integrity.INTACT;
         Entry(long id,long source,FragmentDescriptor descriptor,int x,int y) {
             this.id=id; this.source=source; this.descriptor=descriptor; this.x=x; this.y=y;
             count=descriptor.cellCount(); mass=descriptor.massMilligrams();
         }
-        Rock snapshot() { return new Rock(id,source,descriptor,x,y,count,mass,generation,integrity); }
+        Rock snapshot() { return new Rock(id,source,descriptor,x,y,count,mass,generation,integrity,reactivatedBodyId); }
     }
     private final World world;
     private final RockConnectivity connectivity;
@@ -100,6 +100,46 @@ public final class SettledRockRegistry {
             if(ownerAt(x,y)==id) result.add(new WorldCell(x,y));
         }
         return List.copyOf(result);
+    }
+    /** Prevalidated complete ownership transfer, published only by the reactivation boundary. */
+    public final class PreparedReactivationRemoval {
+        private final Entry entry;
+        private final long expectedRevision,expectedWorldRevision,expectedTopologyRevision,expectedGeneration,nextRevision,nextGeneration,bodyId;
+        private final int[] indices;
+        private PreparedReactivationRemoval(Entry entry,int[] indices,long bodyId) {
+            this.entry=entry; this.indices=indices; this.bodyId=bodyId;
+            expectedRevision=revision; expectedWorldRevision=world.mutationRevision(); expectedTopologyRevision=connectivity.revision();
+            expectedGeneration=entry.generation; nextRevision=Math.incrementExact(revision); nextGeneration=Math.incrementExact(entry.generation);
+        }
+        public boolean owns(World candidate) { return world==candidate; }
+        public boolean valid() {
+            validRegistry();
+            if(revision!=expectedRevision || world.mutationRevision()!=expectedWorldRevision || connectivity.revision()!=expectedTopologyRevision
+                    || connectivity.traversing() || entry.generation!=expectedGeneration || entry.count!=indices.length
+                    || entry.reactivatedBodyId!=0) return false;
+            for(int i:indices) if(owners[i]!=entry.id || world.get(i%world.width(),i/world.width())!=Material.STONE) return false;
+            return true;
+        }
+        public void publish(Object token) {
+            if(!World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
+            for(int i:indices) owners[i]=0;
+            entry.count=0; entry.mass=0; entry.generation=nextGeneration; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyId;
+            revision=nextRevision; connectivity.ownershipChanged();
+        }
+    }
+    public PreparedReactivationRemoval prepareReactivationRemoval(long id,long bodyId) {
+        valid(); connectivity.checkOwnershipMutation();
+        if(id<=0 || id>entries.size() || bodyId<=0) throw new IllegalArgumentException("Invalid reactivation identity");
+        var entry=entries.get(Math.toIntExact(id-1));
+        if(entry.count<=0 || entry.reactivatedBodyId!=0) throw new IllegalStateException("Settled rock is not live");
+        Math.addExact(connectivity.revision(),2);
+        var actual=cells(id); if(actual.size()!=entry.count) throw new IllegalStateException("Ownership count mismatch");
+        int[] indices=new int[actual.size()]; int i=0;
+        for(var c:actual) {
+            if(world.get(c.x(),c.y())!=Material.STONE) throw new IllegalStateException("Owned cell is not STONE");
+            indices[i++]=Math.addExact(Math.multiplyExact(c.y(),world.width()),c.x());
+        }
+        return new PreparedReactivationRemoval(entry,indices,bodyId);
     }
     /**
      * Assign metadata to already-owned STONE. This is NOT a rigid-to-static transfer.

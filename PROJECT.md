@@ -159,6 +159,8 @@ M4.5b.1 adds a settled-rock ownership registry and ownership-aware rock bond bou
 
 M4.5b.2 provides a bounded headless group-settling transaction with separate ownership and idealized BEDROCK support checks. Automatic sandbox settling and re-detachment remain unimplemented; limitations and measurements are in `docs/m4-5b2-group-integration.md`.
 
+M4.5b.3a adds explicit headless atomic reactivation of a settled rock using its current occupied cells, with provenance and mass conservation. Automatic reactivation and cascade remain unimplemented; see `docs/m4-5b3a-reactivation.md`.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.

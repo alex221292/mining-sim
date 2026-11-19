@@ -167,6 +167,72 @@ public final class RigidBodySystem {
         return new PreparedGroupSettlingRemoval(expected,next,fragments,occupancy.prepare(List.copyOf(next.values()),generation));
     }
 
+    /** Prepared body/fragment membership and occupancy for a settled-rock reactivation. */
+    public final class PreparedReactivation {
+        private final TreeMap<Long,RigidBody> expected,next;
+        private final List<RigidBody.State> states;
+        private final FragmentRegistry.Prepared fragment;
+        private final RigidBodyOccupancyIndex.Prepared occupancy;
+        private final RigidBody body;
+        private final RigidBody.State bodyState;
+        private final long geometryNanos,occupancyNanos;
+        private PreparedReactivation(TreeMap<Long,RigidBody> expected,TreeMap<Long,RigidBody> next,
+                FragmentRegistry.Prepared fragment,RigidBodyOccupancyIndex.Prepared occupancy,RigidBody body,long geometryNanos,long occupancyNanos) {
+            this.expected=expected; this.next=next; this.fragment=fragment; this.occupancy=occupancy; this.body=body;
+            this.geometryNanos=geometryNanos; this.occupancyNanos=occupancyNanos;
+            bodyState=body.state();
+            states=expected.values().stream().map(RigidBody::state).toList();
+        }
+        public long bodyId() { return body.id(); }
+        public long geometryNanos() { return geometryNanos; }
+        public long occupancyNanos() { return occupancyNanos; }
+        public boolean owns(miningsim.world.World world) { return occupancy.owns(world) && coupledTo(world); }
+        public boolean valid() {
+            if(!bodies.equals(expected) || !fragment.valid() || !occupancy.valid() || !body.state().equals(bodyState)) return false;
+            int i=0; for(var b:expected.values()) if(!b.state().equals(states.get(i++))) return false;
+            return true;
+        }
+        public void publish(Object token) {
+            if(!miningsim.world.World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
+            fragment.publish(); bodies=next; occupancy.publish();
+        }
+    }
+    public PreparedReactivation prepareReactivation(miningsim.resource.FragmentDescriptor descriptor,int x,int y,
+            RigidBodyOccupancyIndex occupancy,long generation) {
+        return prepareReactivation(descriptor,x,y,occupancy,generation,false);
+    }
+    public PreparedReactivation prepareReactivation(miningsim.resource.FragmentDescriptor descriptor,int x,int y,
+            RigidBodyOccupancyIndex occupancy,long generation,boolean instrument) {
+        Objects.requireNonNull(descriptor); Objects.requireNonNull(occupancy);
+        var old=occupancy.snapshot(); long start=instrument?System.nanoTime():0;
+        var current=occupancy.prepare(this,old.diagnostics().generation()).snapshot();
+        long occupancyNanos=instrument?System.nanoTime()-start:0;
+        if(!current.sameMembership(old)) throw new IllegalStateException("Published occupancy does not match current bodies");
+        if(registry.size()!=bodies.size()) throw new IllegalStateException("Fragment/body membership mismatch");
+        for(var f:registry.snapshot()) if(bodies.get(f.id())==null || bodies.get(f.id()).fragment()!=f)
+            throw new IllegalStateException("Fragment/body ownership mismatch");
+        var fragment=registry.prepare(descriptor,x,y,0); start=instrument?System.nanoTime():0;
+        var body=new RigidBody(fragment.fragment()); long geometryNanos=instrument?System.nanoTime()-start:0;
+        var expected=new TreeMap<>(bodies); var next=new TreeMap<>(bodies);
+        if(next.putIfAbsent(body.id(),body)!=null) throw new IllegalStateException("Body ID conflict");
+        for(var cell:descriptor.cells()) if(old.occupied(Math.addExact(x,cell.x()),Math.addExact(y,cell.y())))
+            throw new IllegalStateException("Reactivation overlaps another rigid body");
+        start=instrument?System.nanoTime():0; var preparedOccupancy=occupancy.prepare(List.copyOf(next.values()),generation);
+        if(instrument) occupancyNanos+=System.nanoTime()-start;
+        var expectedCells=new java.util.HashSet<Long>();
+        for(var cell:descriptor.cells()) {
+            int wx=Math.addExact(x,cell.x()),wy=Math.addExact(y,cell.y());
+            expectedCells.add((long)wy*old.width()+wx);
+            long[] occupants=preparedOccupancy.snapshot().bodyIdsAt(wx,wy);
+            if(occupants.length!=1 || occupants[0]!=body.id()) throw new IllegalStateException("Reactivation occupancy mismatch");
+        }
+        preparedOccupancy.snapshot().forEachCell((wx,wy)->{
+            for(long id:preparedOccupancy.snapshot().bodyIdsAt(wx,wy)) if(id==body.id() && !expectedCells.contains((long)wy*old.width()+wx))
+                throw new IllegalStateException("Reactivation occupancy exceeds source shape");
+        });
+        return new PreparedReactivation(expected,next,fragment,preparedOccupancy,body,geometryNanos,occupancyNanos);
+    }
+
     /** Private-to-package checkpoint for the single-owner coupled commit. */
     final class CoupledCheckpoint {
         private final TreeMap<Long,RigidBody> savedBodies = new TreeMap<>(bodies);
