@@ -1,6 +1,7 @@
 # Mining Sim — Project Specification
 
 Headless settled-rock lifecycle integration and limitations: [M4.5b.4a](docs/m4-5b4a-headless-lifecycle.md).
+Swing lifecycle integration and pending manual acceptance: [M4.5b.4b](docs/m4-5b4b-swing-lifecycle.md).
 
 ## Vision
 

@@ -105,6 +105,7 @@ public final class InteractiveSession {
     public void enableProfiling(boolean enabled) {
         instrument=enabled;
         if(coupled!=null) { physics.enableProfiling(enabled); coupled.enableProfiling(enabled); }
+        if(lifecycle!=null) lifecycle.enableProfiling(enabled);
     }
     public void resume() { if (!retired) { blocked=false; failures=0; recoveryStalls=0; } }
     /** Abandoned sessions must never execute previously queued input again. */

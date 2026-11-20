@@ -1,6 +1,7 @@
 # Mining Sim — спецификация проекта
 
 Интеграция и ограничения headless-жизненного цикла осевшего камня: [M4.5b.4a](docs/m4-5b4a-headless-lifecycle_ru.md).
+Интеграция lifecycle в Swing и ожидающая ручная приёмка: [M4.5b.4b](docs/m4-5b4b-swing-lifecycle_ru.md).
 
 ## Видение
 

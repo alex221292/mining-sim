@@ -14,7 +14,7 @@ import miningsim.world.World;
 public final class HeadlessRockLifecycle {
     public record Diagnostics(int rigidBodies,int settledRocks,int pendingSupport,long settled,long reactivated,
                               long rejected,long retries,Map<String,Long> rejectionReasons,String lastReason,long supportNanos,long planningNanos,long commitNanos,
-                              long reactivationPlanningNanos,long reactivationCommitNanos) {
+                              long reactivationPlanningNanos,long reactivationCommitNanos,String lastReject) {
         public Diagnostics { rejectionReasons=Map.copyOf(rejectionReasons); }
     }
     private record FailureKey(List<Long> ids,long worldRevision,long topologyRevision,long ownershipRevision,List<RigidBody.State> states) { }
@@ -30,10 +30,11 @@ public final class HeadlessRockLifecycle {
     private final Map<List<Long>,FailureKey> rejected=new HashMap<>();
     private final TreeMap<String,Long> reasons=new TreeMap<>();
     private SupportFailureKey supportFailure;
-    private final boolean instrument;
+    private boolean instrument;
     private long settledCount,reactivatedCount,rejectedCount,retries,supportNanos,planningNanos,commitNanos;
     private int pending;
     private String reason="";
+    private String lastReject="";
     private boolean reactivatedThisTick;
     private boolean settlingPublication;
     private long reactivationPlanningNanos,reactivationCommitNanos;
@@ -46,11 +47,12 @@ public final class HeadlessRockLifecycle {
         support=new SettledSupportCoordinator(world,topology,settled,physics,occupancy,limits); support.enableProfiling(instrument);
     }
     public SettledRockRegistry settled() { return settled; }
+    public void enableProfiling(boolean enabled) { instrument=enabled; support.enableProfiling(enabled); }
     /** Owner-thread phase diagnostic, also useful for headless publication observers. */
     public boolean inSettlingPublication() { return settlingPublication; }
-    public Diagnostics diagnostics() { return new Diagnostics(physics.bodies().size(),settled.liveRocks(),pending,settledCount,reactivatedCount,rejectedCount,retries,reasons,reason,supportNanos,planningNanos,commitNanos,reactivationPlanningNanos,reactivationCommitNanos); }
+    public Diagnostics diagnostics() { return new Diagnostics(physics.bodies().size(),settled.liveRocks(),pending,settledCount,reactivatedCount,rejectedCount,retries,reasons,reason,supportNanos,planningNanos,commitNanos,reactivationPlanningNanos,reactivationCommitNanos,lastReject); }
     public void setSupportLimits(SettledSupportCoordinator.Limits limits) { support.setLimits(limits); supportFailure=null; }
-    private void reject(String category,String message) { rejectedCount++; reasons.merge(category,1L,Long::sum); reason=message; }
+    private void reject(String category,String message) { rejectedCount++; reasons.merge(category,1L,Long::sum); reason=message; lastReject=message; }
     /** Runs after commands and before any physics of this tick. */
     public void beforePhysics() {
         reactivatedThisTick=false; planningNanos=commitNanos=reactivationPlanningNanos=reactivationCommitNanos=0;

@@ -29,9 +29,11 @@ import miningsim.app.Camera2D;
 import miningsim.app.Brush;
 import miningsim.app.StructuralSimulationController;
 import miningsim.app.InteractiveSession;
+import miningsim.app.SandboxSessionFactory;
 import miningsim.render.CrackOverlay;
 import miningsim.render.FragmentOverlay;
 import miningsim.render.CoupledDiagnosticsOverlay;
+import miningsim.render.LifecycleDiagnosticsOverlay;
 import miningsim.structural.RockReferenceScenes;
 import miningsim.structural.RestingStackFixture;
 import miningsim.render.Java2DRenderer;
@@ -55,7 +57,7 @@ public final class Main {
     private static final class Sandbox extends JPanel {
         private static final long TICK = 1_000_000_000L / 60;
         private World world = new World(400, 300, World.Mode.BEDROCK_ENABLED);
-        private InteractiveSession session = new InteractiveSession(world,null);
+        private InteractiveSession session = SandboxSessionFactory.create(world,false);
         private SimulationControl control = new SimulationControl(session::tick);
         private Renderer renderer = new Java2DRenderer(world.width(), world.height());
         private final Camera2D camera = new Camera2D();
@@ -157,14 +159,20 @@ public final class Main {
                 if (result != JFileChooser.APPROVE_OPTION) return;
                 Path path = chooser.getSelectedFile().toPath();
                 if (save) {
+                    if (SandboxSessionFactory.losesLifecycleState(session) && JOptionPane.showConfirmDialog(this,
+                            "World-only save omits rigid bodies and settled-rock provenance. Continue?",
+                            "Incomplete world save",JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.YES_OPTION) return;
                     if (!path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".msim"))
                         path = path.resolveSibling(path.getFileName() + ".msim");
                     if (Files.exists(path) && JOptionPane.showConfirmDialog(this, "Replace existing file?", "Save world",
                             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
                     WorldIO.write(world, path);
                 } else {
+                    if (SandboxSessionFactory.losesLifecycleState(session) && JOptionPane.showConfirmDialog(this,
+                            "Loading replaces the current rigid bodies and settled-rock state. Continue?",
+                            "Replace current session",JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.YES_OPTION) return;
                     World loaded = WorldIO.read(path);
-                    InteractiveSession nextSession = new InteractiveSession(loaded,null,diagnostics);
+                    InteractiveSession nextSession = SandboxSessionFactory.create(loaded,diagnostics);
                     SimulationControl nextControl = new SimulationControl(nextSession::tick);
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
@@ -183,7 +191,7 @@ public final class Main {
         private void resetWorld() {
             boolean paused=control.paused();
             var nextWorld=new World(world.width(),world.height(),world.mode());
-            var nextSession=new InteractiveSession(nextWorld,null,diagnostics); var nextControl=new SimulationControl(nextSession::tick);
+            var nextSession=SandboxSessionFactory.create(nextWorld,diagnostics); var nextControl=new SimulationControl(nextSession::tick);
             var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
             if(paused) nextControl.togglePause();
             session.retire(); world=nextWorld; structural=null; session=nextSession; control=nextControl; renderer=nextRenderer;
@@ -262,7 +270,7 @@ public final class Main {
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 315 : 110);
+            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 380 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             String runState=session.blocked()?"BLOCKED":control.paused()?"PAUSED":session.failure()!=null?"RETRYING":"RUNNING";
@@ -284,6 +292,7 @@ public final class Main {
                             sceneName,v.status(),v.componentId(),v.cells(),v.utilization(),v.damage(),broken,v.ticks()),8,118);
                 }
                 CoupledDiagnosticsOverlay.render(g,session);
+                LifecycleDiagnosticsOverlay.render(g,session);
                 if(session.automatic()==null) g.drawString("AUTO DETACH: disabled (reference or legacy)",8,186);
                 else {
                     var d=session.automatic().diagnostics();
