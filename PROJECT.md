@@ -1,5 +1,7 @@
 # Mining Sim — Project Specification
 
+Headless settled-rock lifecycle integration and limitations: [M4.5b.4a](docs/m4-5b4a-headless-lifecycle.md).
+
 ## Vision
 
 Mining Sim is a 2D side-view mining game inspired visually by Terraria and mechanically by falling-sand simulations. The long-term goal is an underground world in which excavation has physical consequences: sand collapses, water floods tunnels, different rocks behave differently, and wooden supports help stabilize excavations.

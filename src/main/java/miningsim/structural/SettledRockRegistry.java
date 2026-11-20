@@ -29,6 +29,7 @@ public final class SettledRockRegistry {
     private final ArrayList<Entry> entries=new ArrayList<>();
     private final int maxRocks,maxCellsPerRock;
     private long revision;
+    private int liveRocks;
     private boolean exhausted;
     private java.util.function.BooleanSupplier supportTransitionGate;
     private final Object supportPublicationPermit=new Object();
@@ -69,7 +70,7 @@ public final class SettledRockRegistry {
         /** Called only after World validates the exact insertion under its single-owner contract. */
         public void publish(Object token) {
             if(!World.isSettlingPublicationToken(token)) throw new IllegalStateException("Not a settling publication");
-            entries.add(entry); for(int i:indices) owners[i]=entry.id;
+            entries.add(entry); for(int i:indices) owners[i]=entry.id; liveRocks++;
             revision=nextRevision; connectivity.ownershipChanged();
         }
     }
@@ -88,6 +89,8 @@ public final class SettledRockRegistry {
     public long revision() { valid(); return revision; }
     /** Number of historical entries, for bounded incremental scans by the support coordinator. */
     public int recordCount() { valid(); return entries.size(); }
+    /** Constant-time count of nonempty settled records. */
+    public int liveRocks() { valid(); return liveRocks; }
     public boolean owns(World candidate,RockConnectivity topology) { return world==candidate && connectivity==topology; }
     public boolean owns(World candidate) { return world==candidate; }
     public long ownerAt(int x,int y) {
@@ -138,7 +141,7 @@ public final class SettledRockRegistry {
         public void publish(Object token) {
             if(!World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
             for(int i:indices) owners[i]=0;
-            entry.count=0; entry.mass=0; entry.generation=nextGeneration; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyId;
+            entry.count=0; entry.mass=0; entry.generation=nextGeneration; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyId; liveRocks--;
             revision=nextRevision; connectivity.ownershipChanged();
         }
     }
@@ -187,6 +190,7 @@ public final class SettledRockRegistry {
                 var entry=selected.get(j); for(int i:indices[j]) owners[i]=0;
                 entry.count=0; entry.mass=0; entry.generation=nextGenerations[j]; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyIds[j];
             }
+            liveRocks-=selected.size();
             revision=nextRevision; connectivity.ownershipChanged();
         }
     }
@@ -240,7 +244,7 @@ public final class SettledRockRegistry {
         long id=entries.size()+1L; var entry=new Entry(id,sourceFragmentId,descriptor,originX,originY);
         entries.add(entry);
         for(var cell:descriptor.cells()) owners[(originY+cell.y())*world.width()+originX+cell.x()]=id;
-        revision++; connectivity.ownershipChanged();
+        liveRocks++; revision++; connectivity.ownershipChanged();
         for(var cell:descriptor.cells()) connectivity.supportOwnershipRegistered(originX+cell.x(),originY+cell.y());
         return id;
     }
@@ -283,6 +287,7 @@ public final class SettledRockRegistry {
         public void publish(Object token) {
             if(!World.isSettlingPublicationToken(token)) throw new IllegalStateException("Not a settling publication");
             for(int j=0;j<additions.size();j++) { var entry=additions.get(j); entries.add(entry); for(int i:indices[j]) owners[i]=entry.id; }
+            liveRocks+=additions.size();
             revision=nextRevision; connectivity.ownershipChanged();
         }
     }
@@ -314,6 +319,7 @@ public final class SettledRockRegistry {
         int index=y*world.width()+x; long id=owners[index]; if(id==0) return;
         var entry=entries.get(Math.toIntExact(id-1)); owners[index]=0;
         entry.count--; entry.mass-=MassAccounting.cellMilligrams(entry.descriptor.substance());
+        if(entry.count==0) liveRocks--;
         if(entry.generation==Long.MAX_VALUE) exhausted=true; else entry.generation++;
         entry.integrity=entry.count==0?Integrity.REMOVED:Integrity.DAMAGED;
         if(revision==Long.MAX_VALUE) exhausted=true; else revision++;

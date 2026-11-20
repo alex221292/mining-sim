@@ -9,6 +9,7 @@ import miningsim.simulation.Simulation;
 import miningsim.world.World;
 import miningsim.structural.AutomaticRockDetachment;
 import miningsim.structural.RockConnectivity;
+import miningsim.structural.SettledSupportCoordinator;
 import miningsim.fragment.ExtractionPlanner;
 import miningsim.world.Material;
 
@@ -22,6 +23,7 @@ public final class InteractiveSession {
     private final RigidBodyOccupancyIndex occupancy;
     private final CoupledSimulationStep coupled;
     private final AutomaticRockDetachment automatic;
+    private final HeadlessRockLifecycle lifecycle;
     private int selectedX=-1,selectedY=-1;
     private boolean instrument;
     private long structuralNanos;
@@ -42,6 +44,22 @@ public final class InteractiveSession {
     }
     /** Explicitly enable topology detachment in selected structural demonstration scenes. */
     public InteractiveSession(World world, StructuralSimulationController structural, boolean instrument, boolean autoEnabled) {
+        this(world,structural,instrument,autoEnabled,false,null);
+    }
+    /** Explicit headless opt-in; desktop constructors and rendering remain unchanged. */
+    public static InteractiveSession headlessLifecycle(World world,boolean instrument,SettledSupportCoordinator.Limits limits) {
+        if(world.mode()!=World.Mode.BEDROCK_ENABLED) throw new IllegalArgumentException("Lifecycle requires BEDROCK_ENABLED");
+        return new InteractiveSession(world,null,instrument,true,true,Objects.requireNonNull(limits));
+    }
+    /** Headless reference-fixture variant; does not alter the desktop constructors. */
+    public static InteractiveSession headlessLifecycle(World world,StructuralSimulationController structural,boolean instrument,
+                                                        boolean autoEnabled,SettledSupportCoordinator.Limits limits) {
+        if(world.mode()!=World.Mode.BEDROCK_ENABLED || structural==null && !autoEnabled)
+            throw new IllegalArgumentException("Lifecycle requires a bedrock world and structural owner");
+        return new InteractiveSession(world,structural,instrument,autoEnabled,true,Objects.requireNonNull(limits));
+    }
+    private InteractiveSession(World world, StructuralSimulationController structural, boolean instrument, boolean autoEnabled,
+                               boolean lifecycleEnabled,SettledSupportCoordinator.Limits lifecycleLimits) {
         this.world=Objects.requireNonNull(world); this.structural=structural;
         this.instrument=instrument;
         if(structural!=null && structural.world()!=world) throw new IllegalArgumentException("Structural world mismatch");
@@ -49,7 +67,7 @@ public final class InteractiveSession {
         if(world.mode()==World.Mode.LEGACY) {
             if(structural!=null) throw new IllegalArgumentException("Legacy structural session unsupported");
             if(autoEnabled) throw new IllegalArgumentException("Legacy automatic detachment unsupported");
-            registry=null; physics=null; occupancy=null; coupled=null; automatic=null;
+            registry=null; physics=null; occupancy=null; coupled=null; automatic=null; lifecycle=null;
         } else {
             registry=structural==null?new FragmentRegistry(1024):structural.registry();
             var query=new StaticCollisionQuery(world,100000,1000000,StaticCollisionQuery.MaterialPolicy.DISPLACE_GRANULAR);
@@ -65,6 +83,7 @@ public final class InteractiveSession {
                 var topology=structural==null?new RockConnectivity(world):structural.connectivity();
                 automatic=new AutomaticRockDetachment(world,topology,registry,physics,occupancy,AutomaticRockDetachment.Limits.defaults(),instrument);
             } else automatic=null;
+            lifecycle=lifecycleEnabled?new HeadlessRockLifecycle(world,structural!=null?structural.connectivity():automatic.topology(),physics,occupancy,coupled,instrument,lifecycleLimits):null;
         }
     }
     public World world() { return world; }
@@ -74,6 +93,7 @@ public final class InteractiveSession {
     public RigidBodyOccupancyIndex occupancy() { return occupancy; }
     public CoupledSimulationStep coupled() { return coupled; }
     public AutomaticRockDetachment automatic() { return automatic; }
+    public HeadlessRockLifecycle lifecycle() { return lifecycle; }
     public String failure() { return failure; }
     public boolean blocked() { return blocked; }
     public boolean recovered() { return recovered; }
@@ -101,6 +121,7 @@ public final class InteractiveSession {
         structuralNanos=instrument?System.nanoTime()-start:0;
         if(coupled==null) { simulation.step(); cellularSteps=Math.incrementExact(cellularSteps); return; }
         if(blocked) return;
+        if(lifecycle!=null) lifecycle.beforePhysics();
         try { coupled.step(); }
         catch(IllegalStateException ex) {
             if(!expectedRejection(ex)) throw ex;
@@ -118,6 +139,7 @@ public final class InteractiveSession {
         // This phase is intentionally outside the coupled transaction.
         coupled.stepCells(simulation);
         cellularSteps=Math.incrementExact(cellularSteps);
+        if(lifecycle!=null) lifecycle.afterCellular();
     }
     private static boolean expectedRejection(IllegalStateException ex) {
         if(ex instanceof RigidBodySystem.MotionBudgetException || ex instanceof RigidBodyOccupancyIndex.BudgetException) return true;
