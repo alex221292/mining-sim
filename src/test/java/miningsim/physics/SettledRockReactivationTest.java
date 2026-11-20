@@ -46,6 +46,16 @@ class SettledRockReactivationTest {
     private static SettledRockReactivation.Result prepare(Fixture f,long id) {
         var s=f.session(); return SettledRockReactivation.prepareReactivation(id,s.world(),s.structural().connectivity(),f.settled(),s.physics(),s.occupancy(),s.coupled().diagnostics().ticks());
     }
+    @Test void stackReactivatesInOneGroup() {
+        var f=stack(); var s=f.session(); long mass=f.settled().snapshot().stream().mapToLong(SettledRockRegistry.Rock::massMilligrams).sum();
+        var result=GroupRockReactivation.prepareGroupReactivation(List.of(3L,1L,2L),s.world(),s.structural().connectivity(),f.settled(),
+                s.physics(),s.occupancy(),s.coupled().diagnostics().ticks(),new GroupRockReactivation.Limits(3,794));
+        assertEquals(GroupRockReactivation.Status.READY,result.status(),result.reason()); assertEquals(794,result.plan().changes().size());
+        assertEquals(World.BatchResult.CHANGED,s.world().commitGroupReactivation(result.plan()));
+        assertEquals(3,s.physics().bodies().size()); assertEquals(mass,s.structural().registry().totalMassMilligrams());
+        assertEquals(0,f.settled().snapshot().stream().mapToInt(SettledRockRegistry.Rock::remainingCells).sum());
+        assertEquals(World.BatchResult.REJECTED,s.world().commitGroupReactivation(result.plan()));
+    }
     @Test void deterministicReplay() {
         var a=stack(); var b=stack();
         for(long id=1;id<=3;id++) {

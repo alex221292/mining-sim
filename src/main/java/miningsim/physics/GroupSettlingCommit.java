@@ -46,7 +46,7 @@ public final class GroupSettlingCommit {
         public List<Long> settledIds() { return insertion.ids(); }
         public boolean owns(World candidate) { return world==candidate && removal.owns(candidate) && insertion.owns(candidate); }
         public boolean valid() {
-            return revision==world.mutationRevision() && removal.valid() && insertion.valid()
+            return settled.supportTransitionsAllowed() && revision==world.mutationRevision() && removal.valid() && insertion.valid()
                     && eligibility.valid(ids,physics,coupled,world,topology,settled);
         }
         public void publish(Object token) {

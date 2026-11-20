@@ -32,7 +32,7 @@ public final class SettlingCommit {
         public long settledId() { return insertion.id(); }
         public boolean owns(World candidate) { return world==candidate && insertion.owns(candidate) && removal.owns(candidate); }
         public boolean valid() {
-            return world.mutationRevision()==worldRevision && world.rigidTerrainRevision()==terrainRevision
+            return settled.supportTransitionsAllowed() && world.mutationRevision()==worldRevision && world.rigidTerrainRevision()==terrainRevision
                     && removal.valid() && insertion.valid() && eligibility.validFor(body,physics,coupled,world,topology,settled)
                     && eligibility.placementSupported(cells,world,topology,settled);
         }

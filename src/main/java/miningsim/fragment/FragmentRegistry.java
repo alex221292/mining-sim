@@ -74,6 +74,37 @@ public final class FragmentRegistry {
         var updated = new ArrayList<>(fragments); updated.add(fragment);
         return new Prepared(fragments,List.copyOf(updated),fragment,after,next,revision,nextRevision);
     }
+    public record GroupInput(FragmentDescriptor descriptor,int originX,int originY,int componentId) { }
+    /** One reservation for all fragments in an atomic group reactivation. */
+    public final class PreparedGroupInsertion {
+        private final List<RockFragment> expected,next,inserted;
+        private final long expectedRevision,nextRevision,nextSequence,nextMass;
+        private PreparedGroupInsertion(List<RockFragment> expected,List<RockFragment> next,List<RockFragment> inserted,
+                                       long nextSequence,long nextMass) {
+            this.expected=expected; this.next=next; this.inserted=inserted; this.nextSequence=nextSequence; this.nextMass=nextMass;
+            expectedRevision=revision; nextRevision=Math.incrementExact(revision);
+        }
+        public List<RockFragment> fragments() { return inserted; }
+        public boolean valid() { return fragments==expected && revision==expectedRevision; }
+        public void publish(Object token) {
+            if(!miningsim.world.World.isReactivationPublicationToken(token) || !valid())
+                throw new IllegalStateException("Invalid group reactivation publication");
+            fragments=next; revision=nextRevision; nextId=nextSequence; mass=nextMass;
+        }
+    }
+    public PreparedGroupInsertion prepareGroupInsertion(List<GroupInput> inputs) {
+        Objects.requireNonNull(inputs);
+        if(inputs.isEmpty() || inputs.size()>capacity-size()) throw new IllegalArgumentException("Invalid group size or capacity");
+        var updated=new ArrayList<>(fragments); var inserted=new ArrayList<RockFragment>(inputs.size());
+        long id=nextId,after=mass;
+        for(var input:inputs) {
+            Objects.requireNonNull(input); var descriptor=Objects.requireNonNull(input.descriptor());
+            after=MassAccounting.add(after,descriptor.massMilligrams());
+            var fragment=new RockFragment(id,descriptor,input.originX(),input.originY(),input.componentId());
+            id=Math.incrementExact(id); updated.add(fragment); inserted.add(fragment);
+        }
+        return new PreparedGroupInsertion(fragments,List.copyOf(updated),List.copyOf(inserted),id,after);
+    }
     public boolean remove(long id) {
         for (int i = 0; i < fragments.size(); i++) if (fragments.get(i).id() == id) {
             long nextRevision = Math.addExact(revision,1);

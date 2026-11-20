@@ -25,6 +25,21 @@ public final class RockConnectivity implements World.ChangeSink {
     private boolean revisionExhausted;
     private int traversalDepth;
     private SettledRockRegistry settled;
+    /** Internal support invalidation observer; never owns World or mutates it in callbacks. */
+    interface SupportChangeObserver {
+        void changed(int x,int y,long previousOwner);
+        void invalidated();
+    }
+    private SupportChangeObserver supportObserver;
+    void attachSupportObserver(SupportChangeObserver observer) {
+        attached();
+        if(supportObserver!=null) throw new IllegalStateException("Support observer already attached");
+        supportObserver=Objects.requireNonNull(observer);
+    }
+    /** Called only after a complete non-World ownership registration. */
+    void supportOwnershipRegistered(int x,int y) {
+        if(supportObserver!=null) supportObserver.changed(x,y,0);
+    }
     private java.util.function.BooleanSupplier testBatchVeto;
     private Runnable testBatchObserver;
     void setTestBatchObserver(java.util.function.BooleanSupplier veto,Runnable observer) { testBatchVeto=veto; testBatchObserver=observer; }
@@ -76,6 +91,7 @@ public final class RockConnectivity implements World.ChangeSink {
     @Override public boolean allowDetach() { return settled==null || !settled.hasOwnedCells(); }
     @Override public void changed(int x, int y, byte previous, byte next) {
         if ((previous == Material.STONE.id()) == (next == Material.STONE.id())) return;
+        long oldOwner=supportObserver!=null && settled!=null && previous==Material.STONE.id()?settled.ownerAt(x,y):0;
         if(settled!=null && previous==Material.STONE.id()) settled.stoneRemoved(x,y);
         int i = y * width + x;
         broken.clear(i * 2); broken.clear(i * 2 + 1);
@@ -84,6 +100,7 @@ public final class RockConnectivity implements World.ChangeSink {
         dirty();
         if(next==Material.STONE.id()) lastAdditionRevision=revision; else lastDisruptionRevision=revision;
         cellIncarnations[i] = revision;
+        if(supportObserver!=null) supportObserver.changed(x,y,oldOwner);
     }
     @Override public void changedBatch(java.util.List<World.CellChange> changes) {
         boolean rockChanged = false;
@@ -92,6 +109,7 @@ public final class RockConnectivity implements World.ChangeSink {
         dirty();
         for (var c : changes) {
             if ((c.expected() == Material.STONE) == (c.replacement() == Material.STONE)) continue;
+            long oldOwner=supportObserver!=null && settled!=null && c.expected()==Material.STONE?settled.ownerAt(c.x(),c.y()):0;
             if(settled!=null && c.expected()==Material.STONE) settled.stoneRemoved(c.x(),c.y());
             if(c.replacement()==Material.STONE) lastAdditionRevision=revision; else lastDisruptionRevision=revision;
             int i = c.y() * width + c.x();
@@ -99,6 +117,7 @@ public final class RockConnectivity implements World.ChangeSink {
             if (c.x() > 0) broken.clear((i - 1) * 2);
             if (c.y() > 0) broken.clear((i - width) * 2 + 1);
             cellIncarnations[i] = revision;
+            if(supportObserver!=null) supportObserver.changed(c.x(),c.y(),oldOwner);
         }
         if(testBatchObserver!=null) testBatchObserver.run();
     }
@@ -107,6 +126,7 @@ public final class RockConnectivity implements World.ChangeSink {
         if(settled!=null) settled.worldInvalidated();
         if(settled==null || !settled.hasOwnedCells()) broken = new BitSet();
         dirty(); invalidationRevision = revision;
+        if(supportObserver!=null) supportObserver.invalidated();
     }
 
     /** Canonical bit index for orthogonally adjacent in-bounds cells. */
@@ -164,7 +184,9 @@ public final class RockConnectivity implements World.ChangeSink {
         if (broken.get(key)) return false;
         broken.set(key);
         if(settled!=null && settledOwnerAt(x1,y1)!=0) settled.bondBroken(x1,y1);
-        dirty(); lastDisruptionRevision=revision; return true;
+        dirty(); lastDisruptionRevision=revision;
+        if(supportObserver!=null) { supportObserver.changed(x1,y1,0); supportObserver.changed(x2,y2,0); }
+        return true;
     }
     public boolean pending() { attached(); return pending; }
     public boolean owns(World candidate) { attached(); return world == candidate; }

@@ -1,0 +1,47 @@
+package miningsim.structural;
+
+import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
+import miningsim.resource.FragmentDescriptor;
+import miningsim.resource.SubstanceRegistry;
+import miningsim.world.Material;
+import miningsim.world.World;
+import org.junit.jupiter.api.Test;
+
+class SettledSupportGraphTest {
+    private static long rock(World world,SettledRockRegistry registry,int x,int y,long source) {
+        world.set(x,y,Material.STONE);
+        return registry.registerExisting(source,new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0))),x,y);
+    }
+    private static SettledSupportGraph.Result solve(World world,RockConnectivity topology,SettledRockRegistry settled,long id,int budget) {
+        var graph=new SettledSupportGraph(world,topology,settled,List.of(id),new SettledSupportGraph.Limits(20,100,budget));
+        SettledSupportGraph.Result result; int steps=0;
+        do { result=graph.step(); assertTrue(++steps<1000); } while(result.status()==SettledSupportGraph.Status.IN_PROGRESS);
+        return result;
+    }
+    @Test void stackAndIncrementalReplay() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,10);
+        world.set(3,18,Material.STONE); long a=rock(world,settled,3,17,1),b=rock(world,settled,3,16,2),c=rock(world,settled,3,15,3);
+        var supported=solve(world,topology,settled,a,1); assertEquals(SettledSupportGraph.Status.COMPLETE,supported.status()); assertTrue(supported.unsupported().isEmpty());
+        world.set(3,18,Material.AIR);
+        var slow=solve(world,topology,settled,a,1); var fast=solve(world,topology,settled,a,100);
+        assertEquals(List.of(a,b,c),slow.unsupported()); assertEquals(slow,fast);
+    }
+    @Test void sideContactIsNotSupportAndStaleIsExplicit() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,10);
+        world.set(3,17,Material.STONE); world.set(3,18,Material.STONE);
+        var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(0,1)));
+        long bottom=settled.registerExisting(1,shape,3,17);
+        assertTrue(solve(world,topology,settled,bottom,10).unsupported().isEmpty());
+        long side=rock(world,settled,4,17,3);
+        assertEquals(List.of(side),solve(world,topology,settled,side,10).unsupported());
+        var graph=new SettledSupportGraph(world,topology,settled,List.of(bottom),new SettledSupportGraph.Limits(10,20,1));
+        assertEquals(SettledSupportGraph.Status.IN_PROGRESS,graph.step().status()); world.set(0,0,Material.STONE);
+        assertEquals(SettledSupportGraph.Status.STALE,graph.step().status());
+    }
+    @Test void unverifiedStoneIsNotFoundation() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,4,10);
+        world.set(3,15,Material.STONE); long id=rock(world,settled,3,14,1);
+        assertEquals(List.of(id),solve(world,topology,settled,id,2).unsupported());
+    }
+}

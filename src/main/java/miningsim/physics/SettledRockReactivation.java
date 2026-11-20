@@ -17,12 +17,13 @@ public final class SettledRockReactivation {
         private final World world;
         private final RigidBodySystem.PreparedReactivation rigid;
         private final SettledRockRegistry.PreparedReactivationRemoval removal;
+        private final SettledRockRegistry settled;
         private final List<World.CellChange> changes;
         private final FragmentDescriptor descriptor;
         private final long settledId,bodyId,worldRevision;
-        private Prepared(World world,RigidBodySystem.PreparedReactivation rigid,SettledRockRegistry.PreparedReactivationRemoval removal,
+        private Prepared(World world,RigidBodySystem.PreparedReactivation rigid,SettledRockRegistry.PreparedReactivationRemoval removal,SettledRockRegistry settled,
                          List<World.CellChange> changes,FragmentDescriptor descriptor,long settledId) {
-            this.world=world; this.rigid=rigid; this.removal=removal; this.changes=List.copyOf(changes);
+            this.world=world; this.rigid=rigid; this.removal=removal; this.settled=settled; this.changes=List.copyOf(changes);
             this.descriptor=descriptor; this.settledId=settledId; bodyId=rigid.bodyId(); worldRevision=world.mutationRevision();
         }
         public long settledId() { return settledId; }
@@ -32,7 +33,7 @@ public final class SettledRockReactivation {
         public long geometryNanos() { return rigid.geometryNanos(); }
         public long occupancyNanos() { return rigid.occupancyNanos(); }
         public boolean owns(World candidate) { return world==candidate && rigid.owns(candidate) && removal.owns(candidate); }
-        public boolean valid() { return world.mutationRevision()==worldRevision && rigid.valid() && removal.valid(); }
+        public boolean valid() { return settled.directReactivationAllowed() && world.mutationRevision()==worldRevision && rigid.valid() && removal.valid(); }
         public void publish(Object token) {
             if(!World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
             removal.publish(token); rigid.publish(token);
@@ -48,6 +49,7 @@ public final class SettledRockReactivation {
             RigidBodySystem physics,RigidBodyOccupancyIndex occupancy,long generation,boolean instrument) {
         Objects.requireNonNull(world); Objects.requireNonNull(topology); Objects.requireNonNull(settled);
         Objects.requireNonNull(physics); Objects.requireNonNull(occupancy);
+        if(!settled.directReactivationAllowed()) return new Result(Status.PREPARATION_FAILED,null,"Reactivation requires the support coordinator");
         if(generation<0 || !settled.owns(world,topology) || !occupancy.owns(world) || !physics.coupledTo(world))
             return new Result(Status.INVALID_ROCK,null,"Mismatched owners");
         try {
@@ -72,7 +74,7 @@ public final class SettledRockReactivation {
             if(descriptor.massMilligrams()!=rock.massMilligrams()) return new Result(Status.INVALID_ROCK,null,"Mass mismatch");
             var rigid=physics.prepareReactivation(descriptor,x,y,occupancy,generation,instrument);
             var removal=settled.prepareReactivationRemoval(id,rigid.bodyId());
-            var plan=new Prepared(world,rigid,removal,changes,descriptor,id);
+            var plan=new Prepared(world,rigid,removal,settled,changes,descriptor,id);
             return plan.valid()?new Result(Status.READY,plan,""):new Result(Status.PREPARATION_FAILED,null,"Preparation became stale");
         } catch(RigidBodyOccupancyIndex.BudgetException ex) {
             return new Result(Status.CAPACITY_OR_BUDGET,null,ex.getMessage());

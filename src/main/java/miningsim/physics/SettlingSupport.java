@@ -17,6 +17,7 @@ public final class SettlingSupport {
         Objects.requireNonNull(body); Objects.requireNonNull(world); Objects.requireNonNull(topology); Objects.requireNonNull(settled);
         if(maxCells<1) throw new IllegalArgumentException("Support budget must be positive");
         if(!topology.owns(world) || !settled.owns(world,topology)) throw new IllegalArgumentException("Support owners differ");
+        if(!settled.supportTransitionsAllowed()) return new Result(Status.SUPPORT_UNVERIFIED,0);
         if(topology.pending()) return new Result(Status.TOPOLOGY_PENDING,0);
         long worldRevision=world.mutationRevision(),terrainRevision=world.rigidTerrainRevision();
         long topologyRevision=topology.revision(),settledRevision=settled.revision();
@@ -74,6 +75,7 @@ public final class SettlingSupport {
         Objects.requireNonNull(cells); Objects.requireNonNull(world); Objects.requireNonNull(topology); Objects.requireNonNull(settled);
         if(maxCells<1) throw new IllegalArgumentException("Support budget must be positive");
         if(!topology.owns(world) || !settled.owns(world,topology)) throw new IllegalArgumentException("Support owners differ");
+        if(!settled.supportTransitionsAllowed()) return new Result(Status.SUPPORT_UNVERIFIED,0);
         if(topology.pending()) return new Result(Status.TOPOLOGY_PENDING,0);
         long w=world.mutationRevision(),t=world.rigidTerrainRevision(),r=topology.revision(),s=settled.revision();
         var queue=new ArrayDeque<Long>(); var visited=new HashSet<Long>(); int inspected=0; boolean unverified=false,supported=false;

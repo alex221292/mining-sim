@@ -161,6 +161,8 @@ M4.5b.2 provides a bounded headless group-settling transaction with separate own
 
 M4.5b.3a adds explicit headless atomic reactivation of a settled rock using its current occupied cells, with provenance and mass conservation. Automatic reactivation and cascade remain unimplemented; see `docs/m4-5b3a-reactivation.md`.
 
+M4.5b.3b adds a budgeted headless support coordinator and atomic dependent-group reactivation; the conservative support model, quarantine, limits and measurements are in `docs/m4-5b3b-support-cascade.md`. Swing integration remains future work.
+
 ### M5 — Better graphics
 
 LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve CPU simulation initially.

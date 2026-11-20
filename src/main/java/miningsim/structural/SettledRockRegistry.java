@@ -30,6 +30,19 @@ public final class SettledRockRegistry {
     private final int maxRocks,maxCellsPerRock;
     private long revision;
     private boolean exhausted;
+    private java.util.function.BooleanSupplier supportTransitionGate;
+    private final Object supportPublicationPermit=new Object();
+    void attachSupportTransitionGate(java.util.function.BooleanSupplier gate) {
+        if(supportTransitionGate!=null) throw new IllegalStateException("Support gate already attached");
+        supportTransitionGate=Objects.requireNonNull(gate);
+    }
+    /** Pending support analysis quarantines settled transitions, not cellular simulation. */
+    public boolean supportTransitionsAllowed() { return supportTransitionGate==null || supportTransitionGate.getAsBoolean(); }
+    /** Once a coordinator is attached, all reactivation must pass its cascade analysis. */
+    public boolean directReactivationAllowed() { return supportTransitionGate==null; }
+    Object supportPublicationPermit() { return supportPublicationPermit; }
+    /** Only the owner coordinator can obtain its unpublished authorization token. */
+    public boolean supportTransitionsAllowed(Object permit) { return permit==supportPublicationPermit || directReactivationAllowed(); }
     /** Prepared ownership metadata, published only with the matching World insertion. */
     public final class PreparedInsertion {
         private final long expectedRevision,expectedWorldRevision,expectedTopologyRevision,nextRevision;
@@ -73,6 +86,8 @@ public final class SettledRockRegistry {
     private void valid() { if(exhausted) throw new IllegalStateException("Settled ownership revision exhausted; create a new session"); }
     private void validRegistry() { valid(); }
     public long revision() { valid(); return revision; }
+    /** Number of historical entries, for bounded incremental scans by the support coordinator. */
+    public int recordCount() { valid(); return entries.size(); }
     public boolean owns(World candidate,RockConnectivity topology) { return world==candidate && connectivity==topology; }
     public boolean owns(World candidate) { return world==candidate; }
     public long ownerAt(int x,int y) {
@@ -141,6 +156,60 @@ public final class SettledRockRegistry {
         }
         return new PreparedReactivationRemoval(entry,indices,bodyId);
     }
+    public record ReactivationMapping(long settledId,long bodyId) { }
+    /** One preallocated transfer of an entire group; each entry keeps its own provenance. */
+    public final class PreparedGroupReactivationRemoval {
+        private final List<Entry> selected;
+        private final long[] generations,nextGenerations,bodyIds;
+        private final int[][] indices;
+        private final long expectedRevision,expectedWorldRevision,expectedTopologyRevision,nextRevision;
+        private PreparedGroupReactivationRemoval(List<Entry> selected,int[][] indices,long[] bodyIds) {
+            this.selected=selected; this.indices=indices; this.bodyIds=bodyIds;
+            generations=new long[selected.size()]; nextGenerations=new long[selected.size()];
+            for(int i=0;i<selected.size();i++) { generations[i]=selected.get(i).generation; nextGenerations[i]=Math.incrementExact(generations[i]); }
+            expectedRevision=revision; nextRevision=Math.incrementExact(revision);
+            expectedWorldRevision=world.mutationRevision(); expectedTopologyRevision=connectivity.revision();
+        }
+        public boolean owns(World candidate) { return world==candidate; }
+        public boolean valid() {
+            validRegistry();
+            if(revision!=expectedRevision || world.mutationRevision()!=expectedWorldRevision || connectivity.revision()!=expectedTopologyRevision || connectivity.traversing()) return false;
+            for(int j=0;j<selected.size();j++) {
+                var entry=selected.get(j);
+                if(entry.generation!=generations[j] || entry.count!=indices[j].length || entry.reactivatedBodyId!=0) return false;
+                for(int i:indices[j]) if(owners[i]!=entry.id || world.get(i%world.width(),i/world.width())!=Material.STONE) return false;
+            }
+            return true;
+        }
+        public void publish(Object token) {
+            if(!World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
+            for(int j=0;j<selected.size();j++) {
+                var entry=selected.get(j); for(int i:indices[j]) owners[i]=0;
+                entry.count=0; entry.mass=0; entry.generation=nextGenerations[j]; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyIds[j];
+            }
+            revision=nextRevision; connectivity.ownershipChanged();
+        }
+    }
+    public PreparedGroupReactivationRemoval prepareGroupReactivationRemoval(List<ReactivationMapping> mappings) {
+        Objects.requireNonNull(mappings); valid(); connectivity.checkOwnershipMutation();
+        if(mappings.isEmpty()) throw new IllegalArgumentException("Empty reactivation group");
+        Math.addExact(connectivity.revision(),2);
+        var selected=new ArrayList<Entry>(); var seen=new java.util.HashSet<Long>(); var bodyIds=new long[mappings.size()]; int[][] indices=new int[mappings.size()][];
+        for(int j=0;j<mappings.size();j++) {
+            var mapping=Objects.requireNonNull(mappings.get(j)); long id=mapping.settledId();
+            if(id<=0 || id>entries.size() || mapping.bodyId()<=0 || !seen.add(id)) throw new IllegalArgumentException("Invalid group identity");
+            var entry=entries.get(Math.toIntExact(id-1));
+            if(entry.count<=0 || entry.reactivatedBodyId!=0) throw new IllegalStateException("Settled rock is not live");
+            var actual=cells(id); if(actual.size()!=entry.count) throw new IllegalStateException("Ownership count mismatch");
+            indices[j]=new int[actual.size()]; int i=0;
+            for(var c:actual) {
+                if(world.get(c.x(),c.y())!=Material.STONE) throw new IllegalStateException("Owned cell is not STONE");
+                indices[j][i++]=Math.addExact(Math.multiplyExact(c.y(),world.width()),c.x());
+            }
+            selected.add(entry); bodyIds[j]=mapping.bodyId();
+        }
+        return new PreparedGroupReactivationRemoval(List.copyOf(selected),indices,bodyIds);
+    }
     /**
      * Assign metadata to already-owned STONE. This is NOT a rigid-to-static transfer.
      * Callers must have separately established provenance and exclusive ownership.
@@ -171,7 +240,9 @@ public final class SettledRockRegistry {
         long id=entries.size()+1L; var entry=new Entry(id,sourceFragmentId,descriptor,originX,originY);
         entries.add(entry);
         for(var cell:descriptor.cells()) owners[(originY+cell.y())*world.width()+originX+cell.x()]=id;
-        revision++; connectivity.ownershipChanged(); return id;
+        revision++; connectivity.ownershipChanged();
+        for(var cell:descriptor.cells()) connectivity.supportOwnershipRegistered(originX+cell.x(),originY+cell.y());
+        return id;
     }
     public PreparedInsertion prepareInsertion(long sourceFragmentId,FragmentDescriptor descriptor,int originX,int originY) {
         Objects.requireNonNull(descriptor); valid(); connectivity.checkOwnershipMutation();
