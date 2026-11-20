@@ -10,6 +10,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import miningsim.resource.SubstanceId;
 import miningsim.structural.SettledRockRegistry;
+import miningsim.structural.RockConnectivity;
+import miningsim.structural.SettledSupportGraph;
 import miningsim.world.Material;
 import miningsim.world.World;
 
@@ -33,6 +35,10 @@ final class GroupSettlingPlanner {
     private GroupSettlingPlanner() { }
     static Result plan(List<RigidBody> input,World world,RigidBodyOccupancyIndex.Snapshot occupancy,
                        SettledRockRegistry settled,long budget,double maxShift,double minCoverage) {
+        return plan(input,world,occupancy,settled,null,budget,maxShift,minCoverage);
+    }
+    static Result plan(List<RigidBody> input,World world,RigidBodyOccupancyIndex.Snapshot occupancy,
+                       SettledRockRegistry settled,RockConnectivity topology,long budget,double maxShift,double minCoverage) {
         if(input.isEmpty() || input.size()>3 || budget<1 || !Double.isFinite(maxShift) || maxShift<0 || maxShift>0.3
                 || !Double.isFinite(minCoverage) || minCoverage<0.9 || minCoverage>1)
             throw new IllegalArgumentException("Invalid group planning limits");
@@ -89,7 +95,24 @@ final class GroupSettlingPlanner {
                 if(!connected(cells,work)) return new Result(false,"disconnected body "+body.id(),List.of(),work.value,competing);
                 result.add(new BodyPlan(body.id(),body.fragment().substance(),body.fragment().massMilligrams(),cells,coverage,shift));
             }
-            if(!supported(bodies,result,cellOwner,world,work)) return new Result(false,"no conservative vertical equilibrium to BEDROCK",List.of(),work.value,competing);
+            var roots=new java.util.TreeSet<Long>();
+            for(var plan:result) for(var c:plan.cells()) {
+                work.add(1); if(c.y()+1<world.height()) { long owner=settled.ownerAt(c.x(),c.y()+1); if(owner>0) roots.add(owner); }
+            }
+            var certified=new HashSet<Long>();
+            for(long root:roots) if(!certified.contains(root)) {
+                if(topology==null) return new Result(false,"settled support requires topology",List.of(),work.value,competing);
+                long remaining=budget-work.value;
+                if(remaining<1) throw new Budget();
+                var graph=new SettledSupportGraph(world,topology,settled,List.of(root),
+                        new SettledSupportGraph.Limits(100,10000,(int)Math.min(remaining,Integer.MAX_VALUE)),cellOwner.keySet());
+                var analysis=graph.step(); work.add(analysis.work());
+                if(analysis.status()!=SettledSupportGraph.Status.COMPLETE) return new Result(false,"prospective support analysis "+analysis.status(),List.of(),work.value,competing);
+                var certificate=graph.certificate();
+                if(certificate.supportedIds().size()!=graph.analyzedIds().size()) return new Result(false,"prospective load destabilizes settled support",List.of(),work.value,competing);
+                certified.addAll(certificate.supportedIds());
+            }
+            if(!supported(bodies,result,cellOwner,world,settled,certified,work)) return new Result(false,"no conservative vertical equilibrium to BEDROCK",List.of(),work.value,competing);
             if(world.mutationRevision()!=revision || settled.revision()!=ownershipRevision) return new Result(false,"stale input",List.of(),work.value,competing);
             return new Result(true,"",result,work.value,competing);
         } catch(Budget ex) { return new Result(false,"work budget exceeded",List.of(),work.value,competing); }
@@ -102,7 +125,7 @@ final class GroupSettlingPlanner {
         return pending.isEmpty();
     }
     /** Vertical-only, frictionless static force/moment balance; not a rock-strength analysis. */
-    private static boolean supported(List<RigidBody> bodies,List<BodyPlan> plans,Map<Long,Integer> owners,World world,Work work) {
+    private static boolean supported(List<RigidBody> bodies,List<BodyPlan> plans,Map<Long,Integer> owners,World world,SettledRockRegistry settled,Set<Long> certified,Work work) {
         var order=new ArrayList<Integer>(); for(int i=0;i<bodies.size();i++) order.add(i);
         order.sort(Comparator.<Integer>comparingDouble(i->bodies.get(i).yCells()).thenComparingLong(i->bodies.get(i).id()));
         double[] weights=new double[bodies.size()],moments=new double[bodies.size()];
@@ -115,7 +138,7 @@ final class GroupSettlingPlanner {
             var contacts=new ArrayList<Support>();
             for(var c:plans.get(i).cells()) {
                 work.add(1); int y=c.y()+1; if(!world.contains(c.x(),y)) continue;
-                if(world.get(c.x(),y)==Material.BEDROCK) { contacts.add(new Support(-1,c.x())); contacts.add(new Support(-1,c.x()+1.0)); }
+                if(world.get(c.x(),y)==Material.BEDROCK || certified.contains(settled.ownerAt(c.x(),y))) { contacts.add(new Support(-1,c.x())); contacts.add(new Support(-1,c.x()+1.0)); }
                 else { Integer below=owners.get((long)y*world.width()+c.x());
                     if(below!=null && below!=i && bodies.get(below).yCells()>bodies.get(i).yCells()) {
                         contacts.add(new Support(below,c.x())); contacts.add(new Support(below,c.x()+1.0));

@@ -18,5 +18,15 @@ public final class LifecycleDiagnosticsOverlay {
         g.drawString("Last lifecycle reject: "+reason,8,342);
         g.drawString(String.format(Locale.ROOT,"Settling ms: %.3f | Support ms: %.3f",
                 (d.planningNanos()+d.commitNanos())/1e6,d.supportNanos()/1e6),8,359);
+        var assembly=session.lifecycle().assemblyDiagnostics();
+        g.drawString(String.format(Locale.ROOT,"Assemblies: %d | Supported settled: %d | Support contacts: %d | %s",
+                assembly.assemblies(),assembly.supported(),assembly.contacts(),assembly.complete()?"current":"analysis pending"),8,376);
+        g.drawString(String.format(Locale.ROOT,"Support dirty: %d | Assembly analysis ms: %.3f",
+                d.pendingSupport(),session.lifecycle().assemblyAnalysisNanos()/1e6),8,393);
+        String settling=session.lifecycle().lastSettlingReject(),support=session.lifecycle().lastSupportReject();
+        if(settling.length()>90) settling=settling.substring(0,87)+"...";
+        if(support.length()>90) support=support.substring(0,87)+"...";
+        g.drawString("Last settling reject: "+settling,8,410);
+        g.drawString("Last support reject: "+support,8,427);
     }
 }

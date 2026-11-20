@@ -32,6 +32,7 @@ public final class AutomaticRockDetachment {
     private int occupancyRetryCountdown;
     private long rejectedOccupancyRevision=-1;
     private String failure="";
+    private SettledRockRegistry settledSupport;
     private Diagnostics diagnostics=new Diagnostics(true,0,0,0,0,0,0,0,0,0,0,"");
     public AutomaticRockDetachment(World world,RockConnectivity topology,FragmentRegistry registry,RigidBodySystem physics,
                                    RigidBodyOccupancyIndex occupancy,Limits limits) {
@@ -45,6 +46,38 @@ public final class AutomaticRockDetachment {
         if(!topology.owns(world) || !occupancy.owns(world)) throw new IllegalArgumentException("Detachment world mismatch");
     }
     public RockConnectivity topology() { return topology; }
+    /** Optional lifecycle support owner, installed before ticking. */
+    public void attachSettledSupport(SettledRockRegistry settled) {
+        if(settledSupport!=null || !settled.owns(world,topology)) throw new IllegalArgumentException("Invalid settled support owner");
+        settledSupport=settled;
+    }
+    private enum Support { SUPPORTED, UNSUPPORTED, DEFERRED }
+    private Support settledSupport(int ordinal,long[] remaining) {
+        if(settledSupport==null) return Support.UNSUPPORTED;
+        var cells=topology.componentCells(ordinal); double sum=0,left=Double.POSITIVE_INFINITY,right=Double.NEGATIVE_INFINITY;
+        if(cells.length>remaining[0]) return Support.DEFERRED;
+        remaining[0]-=cells.length;
+        var roots=new java.util.TreeSet<Long>();
+        for(int cell:cells) {
+            int x=cell%world.width(),y=cell/world.width(); sum+=x+0.5;
+            if(y+1<world.height()) { long id=settledSupport.ownerAt(x,y+1); if(id>0) { roots.add(id); left=Math.min(left,x); right=Math.max(right,x+1.0); } }
+        }
+        if(roots.isEmpty()) return Support.UNSUPPORTED;
+        if(!settledSupport.supportTransitionsAllowed()) return Support.DEFERRED;
+        double center=sum/cells.length; if(center<=left+1e-9 || center>=right-1e-9) return Support.UNSUPPORTED;
+        var proven=new java.util.HashSet<Long>();
+        for(long id:roots) if(!proven.contains(id)) {
+            if(remaining[0]<1) return Support.DEFERRED;
+            var graph=new SettledSupportGraph(world,topology,settledSupport,java.util.List.of(id),
+                    new SettledSupportGraph.Limits(100,10000,(int)remaining[0]));
+            var result=graph.step(); remaining[0]-=result.work();
+            if(result.status()!=SettledSupportGraph.Status.COMPLETE) return Support.DEFERRED;
+            var cert=graph.certificate();
+            if(cert.supportedIds().size()!=graph.analyzedIds().size()) return Support.UNSUPPORTED;
+            proven.addAll(cert.supportedIds());
+        }
+        return Support.SUPPORTED;
+    }
     public Diagnostics diagnostics() { return diagnostics; }
     public long preparationNanos() { return preparationNanos; }
     /** Includes prebuilt body, occupancy preparation and World transaction. */
@@ -80,12 +113,17 @@ public final class AutomaticRockDetachment {
                     if(!topology.foundationConnected(i)) deferred++;
             }
             else {
-                int checked=0,attempted=0,plannedCells=0;
+                int checked=0,attempted=0,plannedCells=0; long[] supportWork={limits.topologyWork()};
                 while(cursor<topology.componentCount() && checked++<limits.componentChecks()) {
                     int ordinal=cursor++, id=topology.componentId(ordinal), size=topology.componentSize(ordinal);
                     if(topology.foundationConnected(ordinal)) continue;
                     unsupported++;
                     if(size>limits.componentCells()) { tooLarge++; failure="TOO_LARGE component "+id+" ("+size+" cells)"; continue; }
+                    if(settledSupport!=null && settledSupport.ownerAt(id%world.width(),id/world.width())==0) {
+                        var support=settledSupport(ordinal,supportWork);
+                        if(support==Support.SUPPORTED) { unsupported--; continue; }
+                        if(support==Support.DEFERRED) { cursor--; unsupported--; deferred++; failure="Settled support analysis pending or budget exceeded"; break; }
+                    }
                     if(size>limits.cellsPerTick()) { rejected++; failure="CELL_BUDGET component "+id+" ("+size+" cells)"; continue; }
                     if(attempted>=limits.componentsPerTick() || size>limits.cellsPerTick()-plannedCells) { cursor--; unsupported--; break; }
                     attempted++; plannedCells+=size;

@@ -25,6 +25,9 @@ public final class SettledSupportCoordinator implements RockConnectivity.Support
     }
     public record Profile(long analysisNanos,long buildNanos,long stabilityNanos,long cascadeNanos,
                           long preparationNanos,long commitNanos,int rocks,int cells,long graphWork) { }
+    /** Cached completed components only; incomplete while work is pending. */
+    public record AssemblyDiagnostics(int assemblies,int supported,int contacts,boolean complete) { }
+    private record Assembly(List<Long> ids,int contacts) { }
     private final World world;
     private final RockConnectivity topology;
     private final SettledRockRegistry settled;
@@ -32,6 +35,9 @@ public final class SettledSupportCoordinator implements RockConnectivity.Support
     private final RigidBodyOccupancyIndex occupancy;
     private Limits limits;
     private final TreeSet<Long> dirty=new TreeSet<>();
+    private final java.util.TreeMap<Long,Assembly> assemblies=new java.util.TreeMap<>();
+    private final java.util.HashMap<Long,Long> assemblyByRock=new java.util.HashMap<>();
+    private int supportedCount,contactCount;
     private long seenOwnershipRevision;
     private long scanCursor=1;
     private boolean scanning=true;
@@ -61,22 +67,40 @@ public final class SettledSupportCoordinator implements RockConnectivity.Support
     /** Diagnostics only; wall-clock time never influences support decisions. */
     public void enableProfiling(boolean enabled) { instrument=enabled; }
     public Profile profile() { return profile; }
+    public AssemblyDiagnostics assemblyDiagnostics() {
+        return new AssemblyDiagnostics(assemblies.size(),supportedCount,contactCount,settled.supportTransitionsAllowed());
+    }
+    private void invalidateAssembly(long id) {
+        var key=assemblyByRock.get(id); if(key==null) return;
+        var assembly=assemblies.remove(key); if(assembly==null) return;
+        for(long member:assembly.ids()) assemblyByRock.remove(member);
+        supportedCount-=assembly.ids().size(); contactCount-=assembly.contacts();
+    }
+    private void markDirty(long id) { if(id>0) { dirty.add(id); invalidateAssembly(id); } }
+    private void cacheAssembly(SettledSupportGraph graph) {
+        var ids=graph.analyzedIds(); var cert=graph.certificate();
+        for(long id:ids) invalidateAssembly(id);
+        if(ids.isEmpty() || cert.supportedIds().size()!=ids.size()) return;
+        assemblies.put(cert.assemblyId(),new Assembly(ids,cert.supportContacts()));
+        for(long id:ids) assemblyByRock.put(id,cert.assemblyId());
+        supportedCount+=ids.size(); contactCount+=cert.supportContacts();
+    }
     @Override public void changed(int x,int y,long previousOwner) {
         try {
-            if(previousOwner>0) dirty.add(previousOwner);
-            if(world.contains(x,y)) { long owner=settled.ownerAt(x,y); if(owner>0) dirty.add(owner); }
-            if(y>0) { long owner=settled.ownerAt(x,y-1); if(owner>0) dirty.add(owner); }
-            if(y+1<world.height()) { long owner=settled.ownerAt(x,y+1); if(owner>0) dirty.add(owner); }
+            markDirty(previousOwner);
+            if(world.contains(x,y)) markDirty(settled.ownerAt(x,y));
+            if(y>0) markDirty(settled.ownerAt(x,y-1));
+            if(y+1<world.height()) markDirty(settled.ownerAt(x,y+1));
             seenOwnershipRevision=settled.revision();
         } catch(RuntimeException ex) { eventFault=true; }
     }
-    @Override public void invalidated() { scanning=true; scanCursor=1; graph=null; cleanup=null; }
+    @Override public void invalidated() { scanning=true; scanCursor=1; graph=null; cleanup=null; assemblies.clear(); assemblyByRock.clear(); supportedCount=contactCount=0; }
     public Result step(long generation) {
         if(generation<0) throw new IllegalArgumentException("Negative generation");
         if(!enabled) return state(Status.IDLE,List.of(),"LEGACY mode");
         if(eventFault) return state(Status.BLOCKED,List.of(),"Support change tracking failed; create a new session");
         try {
-            if(settled.revision()!=seenOwnershipRevision) { scanning=true; scanCursor=1; seenOwnershipRevision=settled.revision(); }
+            if(settled.revision()!=seenOwnershipRevision) { scanning=true; scanCursor=1; seenOwnershipRevision=settled.revision(); assemblies.clear(); assemblyByRock.clear(); supportedCount=contactCount=0; }
         } catch(IllegalStateException ex) { return state(Status.BLOCKED,List.of(),"Support ownership unavailable: "+ex.getMessage()); }
         if(cleanup!=null) {
             boolean stale;
@@ -120,6 +144,7 @@ public final class SettledSupportCoordinator implements RockConnectivity.Support
         if(analysis.status()!=SettledSupportGraph.Status.COMPLETE) { graph=null; return state(Status.BLOCKED,List.of(),"Invalid support component; dirty IDs retained"); }
         var covered=graph.analyzedIds(); var group=analysis.unsupported();
         if(group.isEmpty()) {
+            cacheAssembly(graph);
             scheduleCleanup(covered); graph=null;
             return state(Status.IN_PROGRESS,List.of(),"");
         }

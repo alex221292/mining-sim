@@ -84,6 +84,7 @@ public final class InteractiveSession {
                 automatic=new AutomaticRockDetachment(world,topology,registry,physics,occupancy,AutomaticRockDetachment.Limits.defaults(),instrument);
             } else automatic=null;
             lifecycle=lifecycleEnabled?new HeadlessRockLifecycle(world,structural!=null?structural.connectivity():automatic.topology(),physics,occupancy,coupled,instrument,lifecycleLimits):null;
+            if(lifecycle!=null && automatic!=null) automatic.attachSettledSupport(lifecycle.settled());
         }
     }
     public World world() { return world; }

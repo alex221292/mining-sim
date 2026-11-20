@@ -270,7 +270,7 @@ public final class Main {
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
-            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 380 : 110);
+            g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 445 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             String runState=session.blocked()?"BLOCKED":control.paused()?"PAUSED":session.failure()!=null?"RETRYING":"RUNNING";

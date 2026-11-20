@@ -106,4 +106,36 @@ class GroupSettlingSpikeTest {
         assertEquals(List.of(SubstanceRegistry.MARBLE,SubstanceRegistry.GRANITE),result.bodies().stream().map(GroupSettlingPlanner.BodyPlan::substance).toList());
         assertEquals(List.of(2_700_000L,2_700_000L),result.bodies().stream().map(GroupSettlingPlanner.BodyPlan::mass).toList());
     }
+    @Test void prospectiveBridgeUsesTwoIndependentSettledSupports() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,10);
+        var one=shape(new FragmentDescriptor.Cell(0,0));
+        for(int x:new int[]{3,5}) { world.set(x,18,Material.STONE); miningsim.structural.SettledTestFixtures.register(settled,x,one,x,18); }
+        var registry=new FragmentRegistry(1);
+        registry.insert(shape(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0)),3,17,0);
+        var physics=new RigidBodySystem(registry); physics.synchronize(); var index=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults()); index.rebuild(physics,0);
+        long revision=world.mutationRevision();
+        var result=GroupSettlingPlanner.plan(physics.bodies(),world,index.snapshot(),settled,topology,BUDGET,0.3,0.9);
+        assertTrue(result.success(),result.reason()); assertEquals(revision,world.mutationRevision()); assertEquals(2,settled.liveRocks());
+        boolean limited=false;
+        for(int budget=1;budget<200;budget++) {
+            var failure=GroupSettlingPlanner.plan(physics.bodies(),world,index.snapshot(),settled,topology,budget,0.3,0.9);
+            if(failure.reason().startsWith("prospective support analysis IN_PROGRESS")) {
+                limited=true; assertFalse(failure.success()); assertTrue(failure.work()<=budget); break;
+            }
+        }
+        assertTrue(limited,"expected bounded prospective graph refusal");
+        assertEquals(revision,world.mutationRevision()); assertEquals(2,settled.liveRocks()); assertEquals(1,physics.bodies().size());
+    }
+    @Test void prospectiveLoadThatDestabilizesLowerRockIsRejected() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,10);
+        world.set(3,18,Material.STONE); world.set(4,18,Material.STONE);
+        for(int x=3;x<=5;x++) world.set(x,17,Material.STONE);
+        miningsim.structural.SettledTestFixtures.register(settled,1,shape(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0)),3,17);
+        var registry=new FragmentRegistry(1); registry.insert(shape(new FragmentDescriptor.Cell(0,0)),5,16,0);
+        var physics=new RigidBodySystem(registry); physics.synchronize(); var index=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults()); index.rebuild(physics,0);
+        long revision=world.mutationRevision(); var old=index.snapshot();
+        var result=GroupSettlingPlanner.plan(physics.bodies(),world,old,settled,topology,BUDGET,0.3,0.9);
+        assertFalse(result.success()); assertEquals("prospective load destabilizes settled support",result.reason());
+        assertEquals(revision,world.mutationRevision()); assertSame(old,index.snapshot()); assertEquals(1,physics.bodies().size()); assertEquals(1,settled.liveRocks());
+    }
 }

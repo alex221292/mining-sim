@@ -44,4 +44,31 @@ class SettledSupportGraphTest {
         world.set(3,15,Material.STONE); long id=rock(world,settled,3,14,1);
         assertEquals(List.of(id),solve(world,topology,settled,id,2).unsupported());
     }
+    @Test void certificateIsDeterministicAndRejectsStaleRevisions() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,10);
+        world.set(3,18,Material.STONE); long a=rock(world,settled,3,17,1),b=rock(world,settled,3,16,2);
+        var graph=new SettledSupportGraph(world,topology,settled,List.of(b),new SettledSupportGraph.Limits(10,100,4));
+        assertThrows(IllegalStateException.class,graph::certificate);
+        while(graph.step().status()==SettledSupportGraph.Status.IN_PROGRESS) { }
+        var certificate=graph.certificate(); assertEquals(a,certificate.assemblyId());
+        assertEquals(List.of(a,b),certificate.supportedIds()); assertEquals(2,certificate.supportContacts());
+        world.set(3,18,Material.AIR);
+        assertThrows(IllegalStateException.class,graph::certificate);
+    }
+    @Test void addingUpperLoadCanInvalidatePreviouslyStableFoundation() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,10);
+        world.set(3,18,Material.STONE); world.set(4,18,Material.STONE);
+        for(int x=3;x<=5;x++) world.set(x,17,Material.STONE);
+        var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(
+                new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0)));
+        long lower=settled.registerExisting(1,shape,3,17);
+        assertTrue(solve(world,topology,settled,lower,100).unsupported().isEmpty());
+        long revision=world.mutationRevision();
+        var prospective=new SettledSupportGraph(world,topology,settled,List.of(lower),new SettledSupportGraph.Limits(10,100,100),java.util.Set.of(16L*world.width()+5));
+        assertEquals(SettledSupportGraph.Status.COMPLETE,prospective.step().status());
+        assertFalse(prospective.certificate().supportedIds().contains(lower));
+        assertEquals(revision,world.mutationRevision()); assertEquals(Material.AIR,world.get(5,16));
+        long upper=rock(world,settled,5,16,2);
+        assertTrue(solve(world,topology,settled,lower,100).unsupported().containsAll(List.of(lower,upper)));
+    }
 }

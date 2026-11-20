@@ -111,7 +111,7 @@ public final class GroupSettlingCommit {
                 var result=staticQuery.queryHeldValidation(bodies.get(i),RigidBodySystem.MAX_HELD_PENETRATION_CELLS);
                 consume(graphWork,result.candidates()+result.narrowPhaseChecks(),budget);
                 for(var contact:result.contacts()) if(contact.boundary()==StaticCollisionQuery.Boundary.NONE && contact.normalY()>0.5
-                        && world.get(contact.worldX(),contact.worldY())==Material.BEDROCK) foundation[i]=true;
+                        && (world.get(contact.worldX(),contact.worldY())==Material.BEDROCK || settled.ownerAt(contact.worldX(),contact.worldY())>0)) foundation[i]=true;
             }
             long left=budget-graphWork[0]; if(left<1) throw new IllegalStateException("Group work budget exceeded");
             var collisions=new BodyCollisionQuery(new BodyCollisionQuery.Limits(left,left,4096,4096))
@@ -132,7 +132,7 @@ public final class GroupSettlingCommit {
                 if(supportEdges[i][j] && !supported[j]) { supported[j]=true; grown=true; } } while(grown);
             for(boolean r:supported) if(!r) return new Result(Status.NOT_SETTLEABLE,null,"Source lacks group support path to BEDROCK");
             if(graphWork[0]>=budget) return new Result(Status.NOT_SETTLEABLE,null,"Group work budget exceeded");
-            var plan=GroupSettlingPlanner.plan(bodies,world,occupancy.snapshot(),settled,budget-graphWork[0],0.3,0.9);
+            var plan=GroupSettlingPlanner.plan(bodies,world,occupancy.snapshot(),settled,topology,budget-graphWork[0],0.3,0.9);
             if(!plan.success()) return new Result(Status.NOT_SETTLEABLE,null,plan.reason());
             // The placed contact graph must be connected; independent BEDROCK-supported groups are separate operations.
             var owners=new java.util.HashMap<GroupSettlingPlanner.Cell,Integer>();

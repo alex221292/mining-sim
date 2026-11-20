@@ -18,6 +18,11 @@ public final class SettledSupportGraph {
         public Result { unsupported=List.copyOf(unsupported); }
     }
     public record Timing(long buildNanos,long stabilityNanos,long cascadeNanos) { }
+    /** Read-only derived result; invalid once any of the captured revisions changes. */
+    public record Certificate(long assemblyId,List<Long> supportedIds,int supportContacts,
+                              long terrainRevision,long topologyRevision,long ownershipRevision) {
+        public Certificate { supportedIds=List.copyOf(supportedIds); }
+    }
     private record Contact(long below,double left,double right) { } // below=0 means verified immovable foundation
     private static final class Node {
         final SettledRockRegistry.Rock rock;
@@ -32,6 +37,7 @@ public final class SettledSupportGraph {
     private final Limits limits;
     private final long terrainRevision,topologyRevision,ownershipRevision;
     private final TreeSet<Long> pending=new TreeSet<>();
+    private java.util.Set<Long> prospectiveUpperCells=java.util.Set.of();
     private final java.util.function.LongPredicate isSeed;
     private final TreeMap<Long,Node> nodes=new TreeMap<>();
     private final TreeMap<Long,TreeSet<Long>> uppers=new TreeMap<>();
@@ -60,6 +66,12 @@ public final class SettledSupportGraph {
             throw new IllegalArgumentException("Invalid support owners or seeds");
         var stableSeeds=new TreeSet<>(seeds); this.isSeed=stableSeeds::contains; pending.add(stableSeeds.first());
         terrainRevision=world.rigidTerrainRevision(); topologyRevision=topology.revision(); ownershipRevision=settled.revision();
+    }
+    /** Hypothetical occupied cells are used only as upper contact loads, never as World mutations. */
+    public SettledSupportGraph(World world,RockConnectivity topology,SettledRockRegistry settled,List<Long> seeds,Limits limits,
+                               java.util.Set<Long> prospectiveUpperCells) {
+        this(world,topology,settled,seeds,limits);
+        this.prospectiveUpperCells=java.util.Set.copyOf(prospectiveUpperCells);
     }
     /** The seed predicate must remain stable unless a tracked revision changes. */
     SettledSupportGraph(World world,RockConnectivity topology,SettledRockRegistry settled,long root,
@@ -116,6 +128,9 @@ public final class SettledSupportGraph {
                         else if(below==0 && y+2<world.height() && world.get(x,y+2)==Material.BEDROCK)
                             current.contacts.add(new Contact(0,x,x+1.0));
                     }
+                }
+                if(y>0 && prospectiveUpperCells.contains((long)(y-1)*world.width()+x)) {
+                    current.upperLeft=Math.min(current.upperLeft,x); current.upperRight=Math.max(current.upperRight,x+1.0);
                 }
                 if(y>0 && world.get(x,y-1)==Material.STONE) {
                     long above=settled.ownerAt(x,y-1);
@@ -179,4 +194,14 @@ public final class SettledSupportGraph {
     }
     private Result snapshot() { return new Result(status,result,nodes.size(),cells,work); }
     public List<Long> analyzedIds() { return status==Status.COMPLETE?List.copyOf(nodes.keySet()):List.of(); }
+    /** A completed certificate is a snapshot, not permission to ignore later mutations. */
+    public Certificate certificate() {
+        if(status!=Status.COMPLETE || stale()) throw new IllegalStateException("Support analysis incomplete or stale");
+        var supported=new ArrayList<Long>(); int contacts=0;
+        for(var node:nodes.values()) {
+            if(node.stable) supported.add(node.rock.id());
+            contacts=Math.addExact(contacts,node.contacts.size());
+        }
+        return new Certificate(nodes.isEmpty()?0:nodes.firstKey(),supported,contacts,terrainRevision,topologyRevision,ownershipRevision);
+    }
 }

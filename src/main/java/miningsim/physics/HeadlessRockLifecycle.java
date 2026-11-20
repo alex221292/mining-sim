@@ -35,6 +35,7 @@ public final class HeadlessRockLifecycle {
     private int pending;
     private String reason="";
     private String lastReject="";
+    private String lastSupportReject="",lastSettlingReject="";
     private boolean reactivatedThisTick;
     private boolean settlingPublication;
     private long reactivationPlanningNanos,reactivationCommitNanos;
@@ -47,12 +48,17 @@ public final class HeadlessRockLifecycle {
         support=new SettledSupportCoordinator(world,topology,settled,physics,occupancy,limits); support.enableProfiling(instrument);
     }
     public SettledRockRegistry settled() { return settled; }
+    public SettledSupportCoordinator.AssemblyDiagnostics assemblyDiagnostics() { return support.assemblyDiagnostics(); }
+    public String lastSupportReject() { return lastSupportReject; }
+    public String lastSettlingReject() { return lastSettlingReject; }
+    public long assemblyAnalysisNanos() { return support.profile().analysisNanos(); }
     public void enableProfiling(boolean enabled) { instrument=enabled; support.enableProfiling(enabled); }
     /** Owner-thread phase diagnostic, also useful for headless publication observers. */
     public boolean inSettlingPublication() { return settlingPublication; }
     public Diagnostics diagnostics() { return new Diagnostics(physics.bodies().size(),settled.liveRocks(),pending,settledCount,reactivatedCount,rejectedCount,retries,reasons,reason,supportNanos,planningNanos,commitNanos,reactivationPlanningNanos,reactivationCommitNanos,lastReject); }
     public void setSupportLimits(SettledSupportCoordinator.Limits limits) { support.setLimits(limits); supportFailure=null; }
-    private void reject(String category,String message) { rejectedCount++; reasons.merge(category,1L,Long::sum); reason=message; lastReject=message; }
+    private void reject(String category,String message) { rejectedCount++; reasons.merge(category,1L,Long::sum); reason=message; lastReject=message;
+        if(category.startsWith("support.")) lastSupportReject=message; else lastSettlingReject=message; }
     /** Runs after commands and before any physics of this tick. */
     public void beforePhysics() {
         reactivatedThisTick=false; planningNanos=commitNanos=reactivationPlanningNanos=reactivationCommitNanos=0;
