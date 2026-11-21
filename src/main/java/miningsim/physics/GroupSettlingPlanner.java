@@ -99,8 +99,8 @@ final class GroupSettlingPlanner {
             for(var plan:result) for(var c:plan.cells()) {
                 work.add(1); if(c.y()+1<world.height()) { long owner=settled.ownerAt(c.x(),c.y()+1); if(owner>0) roots.add(owner); }
             }
-            var certified=new HashSet<Long>();
-            for(long root:roots) if(!certified.contains(root)) {
+            var settledNodes=new TreeMap<Long,SettledSupportGraph.SupportNode>();
+            for(long root:roots) if(!settledNodes.containsKey(root)) {
                 if(topology==null) return new Result(false,"settled support requires topology",List.of(),work.value,competing);
                 long remaining=budget-work.value;
                 if(remaining<1) throw new Budget();
@@ -108,11 +108,12 @@ final class GroupSettlingPlanner {
                         new SettledSupportGraph.Limits(100,10000,(int)Math.min(remaining,Integer.MAX_VALUE)),cellOwner.keySet());
                 var analysis=graph.step(); work.add(analysis.work());
                 if(analysis.status()!=SettledSupportGraph.Status.COMPLETE) return new Result(false,"prospective support analysis "+analysis.status(),List.of(),work.value,competing);
-                var certificate=graph.certificate();
-                if(certificate.supportedIds().size()!=graph.analyzedIds().size()) return new Result(false,"prospective load destabilizes settled support",List.of(),work.value,competing);
-                certified.addAll(certificate.supportedIds());
+                for(var node:graph.supportNodes()) settledNodes.put(node.id(),node);
             }
-            if(!supported(bodies,result,cellOwner,world,settled,certified,work)) return new Result(false,"no conservative vertical equilibrium to BEDROCK",List.of(),work.value,competing);
+            if(!roots.isEmpty()) {
+                var balance=ProspectiveAssemblyBalance.check(result,settledNodes,world,settled,budget-work.value); work.add(balance.work());
+                if(!balance.success()) return new Result(false,"prospective "+balance.reason()+" candidates="+bodies.stream().map(RigidBody::id).toList()+" settled="+settledNodes.keySet(),List.of(),work.value,competing);
+            } else if(!supported(bodies,result,cellOwner,world,settled,java.util.Set.of(),work)) return new Result(false,"no conservative vertical equilibrium to BEDROCK",List.of(),work.value,competing);
             if(world.mutationRevision()!=revision || settled.revision()!=ownershipRevision) return new Result(false,"stale input",List.of(),work.value,competing);
             return new Result(true,"",result,work.value,competing);
         } catch(Budget ex) { return new Result(false,"work budget exceeded",List.of(),work.value,competing); }

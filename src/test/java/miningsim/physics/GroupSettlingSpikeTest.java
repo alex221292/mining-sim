@@ -131,11 +131,23 @@ class GroupSettlingSpikeTest {
         world.set(3,18,Material.STONE); world.set(4,18,Material.STONE);
         for(int x=3;x<=5;x++) world.set(x,17,Material.STONE);
         miningsim.structural.SettledTestFixtures.register(settled,1,shape(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0)),3,17);
-        var registry=new FragmentRegistry(1); registry.insert(shape(new FragmentDescriptor.Cell(0,0)),5,16,0);
+        var registry=new FragmentRegistry(1); registry.insert(shape(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0)),4,16,0);
         var physics=new RigidBodySystem(registry); physics.synchronize(); var index=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults()); index.rebuild(physics,0);
         long revision=world.mutationRevision(); var old=index.snapshot();
         var result=GroupSettlingPlanner.plan(physics.bodies(),world,old,settled,topology,BUDGET,0.3,0.9);
-        assertFalse(result.success()); assertEquals("prospective load destabilizes settled support",result.reason());
+        assertFalse(result.success()); assertTrue(result.reason().contains("node 1 resultant="),result.reason());
         assertEquals(revision,world.mutationRevision()); assertSame(old,index.snapshot()); assertEquals(1,physics.bodies().size()); assertEquals(1,settled.liveRocks());
+    }
+    @Test void offsetThirdRockHasBalancedCombinedLoad() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,20);
+        for(int x=3;x<=5;x++) { world.set(x,18,Material.STONE); world.set(x,17,Material.STONE); }
+        var three=shape(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0));
+        miningsim.structural.SettledTestFixtures.register(settled,1,three,3,17);
+        for(int x=4;x<=6;x++) world.set(x,16,Material.STONE);
+        miningsim.structural.SettledTestFixtures.register(settled,2,three,4,16);
+        var registry=new FragmentRegistry(1); registry.insert(shape(new FragmentDescriptor.Cell(0,0)),6,15,0);
+        var physics=new RigidBodySystem(registry); physics.synchronize(); var index=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults()); index.rebuild(physics,0);
+        var result=GroupSettlingPlanner.plan(physics.bodies(),world,index.snapshot(),settled,topology,BUDGET,0.3,0.9);
+        assertTrue(result.success(),result.reason());
     }
 }

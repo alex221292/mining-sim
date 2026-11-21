@@ -68,7 +68,18 @@ class SettledSupportGraphTest {
         assertEquals(SettledSupportGraph.Status.COMPLETE,prospective.step().status());
         assertFalse(prospective.certificate().supportedIds().contains(lower));
         assertEquals(revision,world.mutationRevision()); assertEquals(Material.AIR,world.get(5,16));
-        long upper=rock(world,settled,5,16,2);
+        for(int x=4;x<=6;x++) world.set(x,16,Material.STONE);
+        long upper=settled.registerExisting(2,shape,4,16);
         assertTrue(solve(world,topology,settled,lower,100).unsupported().containsAll(List.of(lower,upper)));
+    }
+    @Test void offsetThreeRockStackRetainsItsBalancedSupport() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,20);
+        for(int x=3;x<=5;x++) { world.set(x,18,Material.STONE); world.set(x,17,Material.STONE); }
+        var three=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0)));
+        long bottom=settled.registerExisting(1,three,3,17);
+        for(int x=4;x<=6;x++) world.set(x,16,Material.STONE);
+        long middle=settled.registerExisting(2,three,4,16),top=rock(world,settled,6,15,3);
+        var result=solve(world,topology,settled,bottom,100);
+        assertTrue(result.unsupported().isEmpty(),"balanced stack rejected: "+result.unsupported()+" (middle="+middle+", top="+top+")");
     }
 }

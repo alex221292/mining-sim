@@ -3,6 +3,7 @@
 Headless settled-rock lifecycle integration and limitations: [M4.5b.4a](docs/m4-5b4a-headless-lifecycle.md).
 Swing lifecycle integration and pending manual acceptance: [M4.5b.4b](docs/m4-5b4b-swing-lifecycle.md).
 Prospective settled-rock assembly support: [M4.5b.4c](docs/m4-5b4c-prospective-support.md).
+Stack reactivation and support-load validation: [M4.5b.4c.1](docs/m4-5b4c1-stack-fix.md).
 
 ## Vision
 

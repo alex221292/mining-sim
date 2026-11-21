@@ -11,6 +11,24 @@ import miningsim.world.World;
 import org.junit.jupiter.api.Test;
 
 class GroupReactivationPublicationTest {
+    @Test void trueForeignOverlapRejectsWithBodyIdsWithoutPublication() {
+        var f=fixture();
+        var cell=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0)));
+        long foreign=f.registry().insert(cell,3,18,0).id(); f.physics().synchronize(); f.occupancy().rebuild(f.physics(),0);
+        var old=f.occupancy().snapshot(); long revision=f.world().mutationRevision();
+        var result=prepare(f,f.occupancy());
+        assertEquals(GroupRockReactivation.Status.CONFLICT,result.status()); assertTrue(result.reason().contains("/"+foreign),result.reason());
+        assertEquals(revision,f.world().mutationRevision()); assertSame(old,f.occupancy().snapshot());
+        assertEquals(2,f.settled().liveRocks()); assertEquals(1,f.physics().bodies().size()); assertNull(result.plan());
+    }
+    @Test void independentRigidBodyDoesNotPreventGroupReactivation() {
+        var f=fixture(); var cell=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0)));
+        long foreign=f.registry().insert(cell,10,16,0).id(); f.physics().synchronize(); f.occupancy().rebuild(f.physics(),0);
+        var before=f.physics().body(foreign); double x=before.xCells(),y=before.yCells();
+        var result=prepare(f,f.occupancy()); assertEquals(GroupRockReactivation.Status.READY,result.status(),result.reason());
+        assertEquals(World.BatchResult.CHANGED,f.world().commitGroupReactivation(result.plan()));
+        assertSame(before,f.physics().body(foreign)); assertEquals(x,before.xCells()); assertEquals(y,before.yCells());
+    }
     private record Fixture(World world,RockConnectivity topology,SettledRockRegistry settled,FragmentRegistry registry,
                            RigidBodySystem physics,RigidBodyOccupancyIndex occupancy) { }
     private static Fixture fixture() {

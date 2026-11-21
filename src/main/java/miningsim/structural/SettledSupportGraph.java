@@ -18,6 +18,11 @@ public final class SettledSupportGraph {
         public Result { unsupported=List.copyOf(unsupported); }
     }
     public record Timing(long buildNanos,long stabilityNanos,long cascadeNanos) { }
+    public record SupportContact(long below,double left,double right) { }
+    public record SupportNode(long id,long massMilligrams,double centerX,List<SupportContact> contacts,
+                              double unknownUpperLeft,double unknownUpperRight,SettledRockRegistry.Integrity integrity) {
+        public SupportNode { contacts=List.copyOf(contacts); }
+    }
     /** Read-only derived result; invalid once any of the captured revisions changes. */
     public record Certificate(long assemblyId,List<Long> supportedIds,int supportContacts,
                               long terrainRevision,long topologyRevision,long ownershipRevision) {
@@ -28,6 +33,9 @@ public final class SettledSupportGraph {
         final SettledRockRegistry.Rock rock;
         final ArrayList<Contact> contacts=new ArrayList<>();
         int cursor,count; double sumX,upperLeft=Double.POSITIVE_INFINITY,upperRight=Double.NEGATIVE_INFINITY;
+        double unknownUpperLeft=Double.POSITIVE_INFINITY,unknownUpperRight=Double.NEGATIVE_INFINITY;
+        double load,moment; int incoming; boolean forceFailed,forceDone,grounded;
+        long chosenA,chosenB;
         boolean stable;
         Node(SettledRockRegistry.Rock rock) { this.rock=rock; }
     }
@@ -51,6 +59,13 @@ public final class SettledSupportGraph {
     private int visited;
     private long work;
     private boolean changed;
+    private final TreeSet<Long> forceReady=new TreeSet<>();
+    private Node forceNode;
+    private Contact forceFirst,forceLast;
+    private int forceContactIndex;
+    private final java.util.HashSet<Long> forceTargets=new java.util.HashSet<>();
+    private int groundIndex,groundContactIndex;
+    private boolean groundChanged;
     private double left,right;
     private Status status=Status.IN_PROGRESS;
     private List<Long> result=List.of();
@@ -136,6 +151,7 @@ public final class SettledSupportGraph {
                     long above=settled.ownerAt(x,y-1);
                     if(above!=current.rock.id()) {
                         if(above!=0) enqueue(above);
+                        else { current.unknownUpperLeft=Math.min(current.unknownUpperLeft,x); current.unknownUpperRight=Math.max(current.unknownUpperRight,x+1.0); }
                         current.upperLeft=Math.min(current.upperLeft,x); current.upperRight=Math.max(current.upperRight,x+1.0);
                     }
                 }
@@ -157,9 +173,61 @@ public final class SettledSupportGraph {
                 remaining--; work++; continue;
             }
             if(phase==4) {
-                if(orderIterator.hasNext()) { order.add(orderIterator.next()); remaining--; work++; }
-                else phase=1;
+                if(orderIterator.hasNext()) {
+                    var n=orderIterator.next(); order.add(n); n.load=n.rock.massMilligrams(); n.moment=n.load*n.sumX/n.count;
+                    var above=uppers.get(n.rock.id()); n.incoming=above==null?0:above.size(); if(n.incoming==0) forceReady.add(n.rock.id());
+                    remaining--; work++;
+                } else phase=8;
                 continue;
+            }
+            if(phase==8) {
+                if(groundIndex>=order.size()) {
+                    if(groundChanged) { groundIndex=0; groundChanged=false; } else phase=6;
+                    continue;
+                }
+                var n=order.get(groundIndex);
+                if(n.grounded || groundContactIndex>=n.contacts.size()) { groundIndex++; groundContactIndex=0; remaining--; work++; continue; }
+                var c=n.contacts.get(groundContactIndex++); remaining--; work++;
+                if(c.below()==0 || nodes.get(c.below()).grounded) { n.grounded=true; groundChanged=true; }
+                continue;
+            }
+            if(phase==6) {
+                if(forceNode==null) {
+                    if(forceReady.isEmpty()) { phase=1; continue; }
+                    forceNode=nodes.get(forceReady.pollFirst()); forceContactIndex=0; forceFirst=forceLast=null;
+                }
+                if(forceContactIndex<forceNode.contacts.size()) {
+                    var c=forceNode.contacts.get(forceContactIndex++); remaining--; work++;
+                    if(c.below()!=0 && !nodes.get(c.below()).grounded) continue;
+                    if(forceFirst==null || c.left()<forceFirst.left() || c.left()==forceFirst.left() && c.below()<forceFirst.below()) forceFirst=c;
+                    if(forceLast==null || c.right()>forceLast.right() || c.right()==forceLast.right() && c.below()<forceLast.below()) forceLast=c;
+                    continue;
+                }
+                double resultant=forceNode.moment/forceNode.load;
+                forceNode.forceFailed=forceFirst==null || resultant<=forceFirst.left()+1e-9 || resultant>=forceLast.right()-1e-9
+                        || forceNode.unknownUpperLeft<(forceFirst==null?Double.POSITIVE_INFINITY:forceFirst.left())-1e-9
+                        || forceNode.unknownUpperRight>(forceLast==null?Double.NEGATIVE_INFINITY:forceLast.right())+1e-9;
+                if(!forceNode.forceFailed) {
+                    double share=(resultant-forceFirst.left())/(forceLast.right()-forceFirst.left());
+                    forceNode.chosenA=forceFirst.below(); forceNode.chosenB=forceLast.below();
+                    if(forceFirst.below()!=0) { var n=nodes.get(forceFirst.below()); double f=forceNode.load*(1-share); n.load+=f; n.moment+=f*forceFirst.left(); }
+                    if(forceLast.below()!=0) { var n=nodes.get(forceLast.below()); double f=forceNode.load*share; n.load+=f; n.moment+=f*forceLast.right(); }
+                }
+                forceNode.forceDone=true; forceContactIndex=0; forceTargets.clear(); phase=7; remaining--; work++; continue;
+            }
+            if(phase==7) {
+                if(forceContactIndex<forceNode.contacts.size()) {
+                    var c=forceNode.contacts.get(forceContactIndex++); remaining--; work++;
+                    if(c.below()!=0) {
+                        var n=nodes.get(c.below());
+                        if(Double.isFinite(forceNode.unknownUpperLeft)) {
+                            n.unknownUpperLeft=Math.min(n.unknownUpperLeft,c.left()); n.unknownUpperRight=Math.max(n.unknownUpperRight,c.right());
+                        }
+                        if(forceTargets.add(c.below()) && --n.incoming==0) forceReady.add(n.rock.id());
+                    }
+                    continue;
+                }
+                forceNode=null; phase=6; continue;
             }
             if(phase==5) {
                 if(seedIndex<order.size()) {
@@ -181,9 +249,11 @@ public final class SettledSupportGraph {
                 if(contact.below()==0 || below!=null && below.stable) { left=Math.min(left,contact.left()); right=Math.max(right,contact.right()); }
                 continue;
             }
-            double center=solving.sumX/solving.count;
-            if(solving.rock.integrity()==SettledRockRegistry.Integrity.INTACT && center>left+1e-9 && center<right-1e-9
-                    && solving.upperLeft>=left-1e-9 && solving.upperRight<=right+1e-9) {
+            double center=solving.moment/solving.load;
+            boolean chosen=(solving.chosenA==0 || nodes.get(solving.chosenA).stable) && (solving.chosenB==0 || nodes.get(solving.chosenB).stable);
+            if(solving.forceDone && !solving.forceFailed && chosen && solving.rock.integrity()==SettledRockRegistry.Integrity.INTACT && center>left+1e-9 && center<right-1e-9
+                    && solving.unknownUpperLeft>=left-1e-9 && solving.unknownUpperRight<=right+1e-9
+                    && (prospectiveUpperCells.isEmpty() || solving.upperLeft>=left-1e-9 && solving.upperRight<=right+1e-9)) {
                 solving.stable=true; changed=true;
             }
             solving=null; solveIndex++; remaining--; work++;
@@ -194,6 +264,13 @@ public final class SettledSupportGraph {
     }
     private Result snapshot() { return new Result(status,result,nodes.size(),cells,work); }
     public List<Long> analyzedIds() { return status==Status.COMPLETE?List.copyOf(nodes.keySet()):List.of(); }
+    /** Bounded geometry summary for one completed component, not a reusable stability certificate. */
+    public List<SupportNode> supportNodes() {
+        if(status!=Status.COMPLETE || stale()) throw new IllegalStateException("Support analysis incomplete or stale");
+        return nodes.values().stream().map(n->new SupportNode(n.rock.id(),n.rock.massMilligrams(),n.sumX/n.count,
+                n.contacts.stream().map(c->new SupportContact(c.below(),c.left(),c.right())).toList(),
+                n.unknownUpperLeft,n.unknownUpperRight,n.rock.integrity())).toList();
+    }
     /** A completed certificate is a snapshot, not permission to ignore later mutations. */
     public Certificate certificate() {
         if(status!=Status.COMPLETE || stale()) throw new IllegalStateException("Support analysis incomplete or stale");

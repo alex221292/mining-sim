@@ -266,19 +266,36 @@ public final class RigidBodySystem {
             throw new IllegalStateException("Fragment/body ownership mismatch");
         var fragments=registry.prepareGroupInsertion(inputs); var expected=new TreeMap<>(bodies); var next=new TreeMap<>(bodies);
         var cellOwners=new java.util.HashMap<Long,Long>();
+        var insertedBodies=new java.util.ArrayList<RigidBody>();
         for(var fragment:fragments.fragments()) {
             var body=new RigidBody(fragment); if(next.putIfAbsent(body.id(),body)!=null) throw new IllegalStateException("Body ID conflict");
+            insertedBodies.add(body);
             for(var c:fragment.descriptor().cells()) {
                 int x=fragment.worldX(c),y=fragment.worldY(c);
-                if(x<0 || y<0 || x>=old.width() || y>=old.height() || old.occupied(x,y)) throw new IllegalStateException("Reactivation overlaps another rigid body or boundary");
+                if(x<0 || y<0 || x>=old.width() || y>=old.height()) throw new IllegalStateException("Reactivation body "+body.id()+" crosses boundary at ("+x+","+y+")");
                 if(cellOwners.put((long)y*old.width()+x,body.id())!=null) throw new IllegalStateException("Group cell overlap");
             }
+        }
+        // A sleeping body may already have a shallow solver contact against these very
+        // World cells. Keep that contact in physics rather than treating the raster
+        // occupancy index as an exact intersection test. Deep or moving overlaps fail.
+        long pairs=0,checks=0;
+        for(var added:insertedBodies) for(var existing:expected.values()) {
+            if(++pairs>1_000_000 || checks>=1_000_000) throw new IllegalStateException("Reactivation collision work limit exceeded");
+            var contactQuery=new BodyCollisionQuery(new BodyCollisionQuery.Limits(1,1_000_000-checks,4096,4096));
+            BodyCollisionQuery.Result query;
+            try { query=contactQuery.queryHeldValidation(List.of(added,existing),java.util.Set.of(added.id()),MAX_HELD_PENETRATION_CELLS); }
+            catch(IllegalStateException ex) { throw new IllegalStateException("Reactivation collision bodies "+added.id()+"/"+existing.id()+": "+ex.getMessage(),ex); }
+            checks+=query.narrowChecks();
+            for(var contact:query.contacts()) if(!existing.sleeping())
+                throw new IllegalStateException("Reactivation collision bodies "+added.id()+"/"+existing.id()+" penetration="+contact.penetrationCells()+" cells; existing sleeping="+existing.sleeping());
         }
         var prepared=occupancy.prepare(List.copyOf(next.values()),generation);
         for(var entry:cellOwners.entrySet()) {
             int x=(int)(entry.getKey()%old.width()),y=(int)(entry.getKey()/old.width());
             long[] ids=prepared.snapshot().bodyIdsAt(x,y);
-            if(ids.length!=1 || ids[0]!=entry.getValue()) throw new IllegalStateException("Group occupancy mismatch");
+            boolean found=false; for(long id:ids) if(id==entry.getValue()) found=true;
+            if(!found) throw new IllegalStateException("Group occupancy mismatch");
         }
         var inserted=new java.util.HashSet<>(fragments.fragments().stream().map(miningsim.fragment.RockFragment::id).toList());
         prepared.snapshot().forEachCell((x,y)->{
