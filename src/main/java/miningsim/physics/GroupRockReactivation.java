@@ -18,16 +18,24 @@ public final class GroupRockReactivation {
         public Limits { if(maxBodies<1 || maxCells<1) throw new IllegalArgumentException("Invalid limits"); }
     }
     public record Result(Status status,Prepared plan,String reason) { }
+    public record Component(long settledId,List<SettledRockRegistry.WorldCell> cells) {
+        public Component { cells=List.copyOf(cells); }
+    }
+    private interface Ownership {
+        boolean owns(World world);
+        boolean valid();
+        void publish(Object token);
+    }
     public static final class Prepared {
         private final World world;
         private final RigidBodySystem.PreparedGroupReactivation rigid;
-        private final SettledRockRegistry.PreparedGroupReactivationRemoval ownership;
+        private final Ownership ownership;
         private final SettledRockRegistry settled;
         private final Object supportPermit;
         private final List<World.CellChange> changes;
         private final List<SettledRockRegistry.ReactivationMapping> mappings;
         private final long worldRevision;
-        private Prepared(World world,RigidBodySystem.PreparedGroupReactivation rigid,SettledRockRegistry.PreparedGroupReactivationRemoval ownership,SettledRockRegistry settled,Object supportPermit,
+        private Prepared(World world,RigidBodySystem.PreparedGroupReactivation rigid,Ownership ownership,SettledRockRegistry settled,Object supportPermit,
                 List<World.CellChange> changes,List<SettledRockRegistry.ReactivationMapping> mappings) {
             this.world=world; this.rigid=rigid; this.ownership=ownership; this.settled=settled; this.supportPermit=supportPermit; this.changes=List.copyOf(changes);
             this.mappings=List.copyOf(mappings); worldRevision=world.mutationRevision();
@@ -42,6 +50,51 @@ public final class GroupRockReactivation {
         }
     }
     private GroupRockReactivation() { }
+    /** Prepare selected complete components; no ownership or World mutation occurs here. */
+    public static Result prepareComponentReactivation(List<Component> components,World world,RockConnectivity topology,SettledRockRegistry settled,
+            RigidBodySystem physics,RigidBodyOccupancyIndex occupancy,long generation,Limits limits,Object supportPermit) {
+        Objects.requireNonNull(components); Objects.requireNonNull(world); Objects.requireNonNull(topology); Objects.requireNonNull(settled);
+        Objects.requireNonNull(physics); Objects.requireNonNull(occupancy); Objects.requireNonNull(limits);
+        if(!settled.supportTransitionsAllowed(supportPermit)) return new Result(Status.STALE,null,"Support analysis pending");
+        if(generation<0 || components.isEmpty() || components.size()>limits.maxBodies() || !settled.owns(world,topology)
+                || !occupancy.owns(world) || !physics.coupledTo(world)) return new Result(Status.INVALID,null,"Invalid components or owners");
+        try {
+            var ordered=new ArrayList<>(components);
+            if(ordered.stream().anyMatch(c->c==null || c.cells().isEmpty())) return new Result(Status.INVALID,null,"Empty component");
+            ordered.sort(Comparator.comparingLong(Component::settledId).thenComparingInt(c->c.cells().getFirst().y()).thenComparingInt(c->c.cells().getFirst().x()));
+            var inputs=new ArrayList<FragmentRegistry.GroupInput>(); var changes=new ArrayList<World.CellChange>(); int total=0;
+            for(var component:ordered) {
+                var rock=settled.rock(component.settledId()); var cells=component.cells();
+                if(cells.isEmpty()) return new Result(Status.INVALID,null,"Empty component");
+                total=Math.addExact(total,cells.size()); if(total>limits.maxCells()) return new Result(Status.BUDGET,null,"Group cell limit exceeded");
+                int x=cells.stream().mapToInt(SettledRockRegistry.WorldCell::x).min().orElseThrow(),y=cells.stream().mapToInt(SettledRockRegistry.WorldCell::y).min().orElseThrow();
+                var local=new ArrayList<FragmentDescriptor.Cell>();
+                for(var cell:cells) {
+                    if(world.get(cell.x(),cell.y())!=Material.STONE || settled.ownerAt(cell.x(),cell.y())!=rock.id()) return new Result(Status.INVALID,null,"Invalid component ownership");
+                    local.add(new FragmentDescriptor.Cell(cell.x()-x,cell.y()-y)); changes.add(new World.CellChange(cell.x(),cell.y(),Material.STONE,Material.AIR));
+                }
+                var descriptor=new FragmentDescriptor(rock.descriptor().substance(),local);
+                inputs.add(new FragmentRegistry.GroupInput(descriptor,x,y,0));
+            }
+            var rigid=physics.prepareGroupReactivation(inputs,occupancy,generation); var ids=rigid.bodyIds();
+            var selected=new ArrayList<SettledRockRegistry.ComponentReactivationMapping>(); var mappings=new ArrayList<SettledRockRegistry.ReactivationMapping>();
+            for(int i=0;i<ordered.size();i++) {
+                selected.add(new SettledRockRegistry.ComponentReactivationMapping(ordered.get(i).settledId(),ids.get(i),ordered.get(i).cells()));
+                mappings.add(new SettledRockRegistry.ReactivationMapping(ordered.get(i).settledId(),ids.get(i)));
+            }
+            var removal=settled.prepareComponentReactivationRemoval(selected);
+            Ownership ownership=new Ownership() {
+                public boolean owns(World candidate) { return removal.owns(candidate); }
+                public boolean valid() { return removal.valid(); }
+                public void publish(Object token) { removal.publish(token); }
+            };
+            changes.sort(Comparator.comparingInt(World.CellChange::y).thenComparingInt(World.CellChange::x));
+            var plan=new Prepared(world,rigid,ownership,settled,supportPermit,changes,mappings);
+            return plan.valid()?new Result(Status.READY,plan,""):new Result(Status.STALE,null,"Preparation became stale");
+        } catch(RigidBodyOccupancyIndex.BudgetException ex) { return new Result(Status.BUDGET,null,ex.getMessage()); }
+        catch(IllegalArgumentException | ArithmeticException ex) { return new Result(Status.INVALID,null,ex.toString()); }
+        catch(IllegalStateException ex) { return new Result(Status.CONFLICT,null,ex.toString()); }
+    }
     public static Result prepareGroupReactivation(List<Long> bodyIds,World world,RockConnectivity topology,SettledRockRegistry settled,
             RigidBodySystem physics,RigidBodyOccupancyIndex occupancy,long generation,Limits limits) {
         return prepareGroupReactivation(bodyIds,world,topology,settled,physics,occupancy,generation,limits,null);
@@ -75,7 +128,12 @@ public final class GroupRockReactivation {
             }
             var rigid=physics.prepareGroupReactivation(inputs,occupancy,generation); var mappings=new ArrayList<SettledRockRegistry.ReactivationMapping>();
             var newIds=rigid.bodyIds(); for(int i=0;i<ids.size();i++) mappings.add(new SettledRockRegistry.ReactivationMapping(ids.get(i),newIds.get(i)));
-            var ownership=settled.prepareGroupReactivationRemoval(mappings);
+            var removal=settled.prepareGroupReactivationRemoval(mappings);
+            Ownership ownership=new Ownership() {
+                public boolean owns(World candidate) { return removal.owns(candidate); }
+                public boolean valid() { return removal.valid(); }
+                public void publish(Object token) { removal.publish(token); }
+            };
             changes.sort(Comparator.comparingInt(World.CellChange::y).thenComparingInt(World.CellChange::x));
             var plan=new Prepared(world,rigid,ownership,settled,supportPermit,changes,mappings);
             return plan.valid()?new Result(Status.READY,plan,""):new Result(Status.STALE,null,"Preparation became stale");

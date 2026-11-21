@@ -17,6 +17,7 @@ public final class SettledRockRegistry {
     private static final class Entry {
         final long id,source; final FragmentDescriptor descriptor; final int x,y;
         int count; long mass,generation,reactivatedBodyId; Integrity integrity=Integrity.INTACT;
+        List<Long> reactivatedBodyIds=List.of();
         Entry(long id,long source,FragmentDescriptor descriptor,int x,int y) {
             this.id=id; this.source=source; this.descriptor=descriptor; this.x=x; this.y=y;
             count=descriptor.cellCount(); mass=descriptor.massMilligrams();
@@ -119,15 +120,42 @@ public final class SettledRockRegistry {
         }
         return List.copyOf(result);
     }
+    /** All body IDs transferred from this settled record, in publication order. */
+    public List<Long> reactivatedBodyIds(long id) {
+        valid(); if(id<=0 || id>entries.size()) throw new IllegalArgumentException("Unknown settled ID");
+        return entries.get(Math.toIntExact(id-1)).reactivatedBodyIds;
+    }
+    /** Current orthogonally connected ownership components, ordered by their first row-major cell. */
+    public List<List<WorldCell>> connectedComponents(long id) {
+        var all=cells(id); var remaining=new java.util.HashSet<WorldCell>(all);
+        var components=new ArrayList<List<WorldCell>>();
+        var queue=new java.util.ArrayDeque<WorldCell>();
+        int[] dx={0,-1,1,0},dy={-1,0,0,1};
+        for(var start:all) if(remaining.remove(start)) {
+            var component=new ArrayList<WorldCell>(); queue.add(start);
+            while(!queue.isEmpty()) {
+                var cell=queue.removeFirst(); component.add(cell);
+                for(int direction=0;direction<dx.length;direction++) {
+                    int x=cell.x()+dx[direction],y=cell.y()+dy[direction];
+                    if(world.contains(x,y)) { var next=new WorldCell(x,y); if(remaining.remove(next)) queue.addLast(next); }
+                }
+            }
+            component.sort(java.util.Comparator.comparingInt(WorldCell::y).thenComparingInt(WorldCell::x));
+            components.add(List.copyOf(component));
+        }
+        return List.copyOf(components);
+    }
     /** Prevalidated complete ownership transfer, published only by the reactivation boundary. */
     public final class PreparedReactivationRemoval {
         private final Entry entry;
         private final long expectedRevision,expectedWorldRevision,expectedTopologyRevision,expectedGeneration,nextRevision,nextGeneration,bodyId;
         private final int[] indices;
+        private final List<Long> nextBodyIds;
         private PreparedReactivationRemoval(Entry entry,int[] indices,long bodyId) {
             this.entry=entry; this.indices=indices; this.bodyId=bodyId;
             expectedRevision=revision; expectedWorldRevision=world.mutationRevision(); expectedTopologyRevision=connectivity.revision();
             expectedGeneration=entry.generation; nextRevision=Math.incrementExact(revision); nextGeneration=Math.incrementExact(entry.generation);
+            var history=new ArrayList<>(entry.reactivatedBodyIds); history.add(bodyId); nextBodyIds=List.copyOf(history);
         }
         public boolean owns(World candidate) { return world==candidate; }
         public boolean valid() {
@@ -141,7 +169,7 @@ public final class SettledRockRegistry {
         public void publish(Object token) {
             if(!World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
             for(int i:indices) owners[i]=0;
-            entry.count=0; entry.mass=0; entry.generation=nextGeneration; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyId; liveRocks--;
+            entry.count=0; entry.mass=0; entry.generation=nextGeneration; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyId; entry.reactivatedBodyIds=nextBodyIds; liveRocks--;
             revision=nextRevision; connectivity.ownershipChanged();
         }
     }
@@ -160,16 +188,101 @@ public final class SettledRockRegistry {
         return new PreparedReactivationRemoval(entry,indices,bodyId);
     }
     public record ReactivationMapping(long settledId,long bodyId) { }
+    /** A body receives exactly these current cells; several components may share a settled ID. */
+    public record ComponentReactivationMapping(long settledId,long bodyId,List<WorldCell> cells) {
+        public ComponentReactivationMapping { cells=List.copyOf(cells); }
+    }
+    /** Prevalidated selective removal; remaining cells retain their existing owner. */
+    public final class PreparedComponentReactivationRemoval {
+        private final List<Entry> selected;
+        private final int[][] indices;
+        private final long[] generations,nextGenerations,masses,bodyIds;
+        private final List<List<Long>> nextBodyIds;
+        private final int[] expectedCounts;
+        private final long expectedRevision,expectedWorldRevision,expectedTopologyRevision,nextRevision;
+        private PreparedComponentReactivationRemoval(List<Entry> selected,int[][] indices,long[] bodyIds,List<List<Long>> transferredBodyIds) {
+            this.selected=selected; this.indices=indices; this.bodyIds=bodyIds;
+            generations=new long[selected.size()]; nextGenerations=new long[selected.size()]; masses=new long[selected.size()]; expectedCounts=new int[selected.size()];
+            var histories=new ArrayList<List<Long>>(selected.size());
+            for(int i=0;i<selected.size();i++) {
+                var e=selected.get(i); generations[i]=e.generation; nextGenerations[i]=Math.incrementExact(e.generation);
+                expectedCounts[i]=e.count; masses[i]=Math.multiplyExact(MassAccounting.cellMilligrams(e.descriptor.substance()),indices[i].length);
+                if(masses[i]>e.mass) throw new IllegalStateException("Partial transfer mass exceeds settled mass");
+                var history=new ArrayList<>(e.reactivatedBodyIds); history.addAll(transferredBodyIds.get(i)); histories.add(List.copyOf(history));
+            }
+            nextBodyIds=List.copyOf(histories);
+            expectedRevision=revision; nextRevision=Math.incrementExact(revision);
+            expectedWorldRevision=world.mutationRevision(); expectedTopologyRevision=connectivity.revision();
+        }
+        public boolean owns(World candidate) { return world==candidate; }
+        public boolean valid() {
+            validRegistry();
+            if(revision!=expectedRevision || world.mutationRevision()!=expectedWorldRevision || connectivity.revision()!=expectedTopologyRevision || connectivity.traversing()) return false;
+            for(int j=0;j<selected.size();j++) {
+                var e=selected.get(j);
+                if(e.generation!=generations[j] || e.count!=expectedCounts[j] || e.reactivatedBodyId!=0) return false;
+                for(int i:indices[j]) if(owners[i]!=e.id || world.get(i%world.width(),i/world.width())!=Material.STONE) return false;
+            }
+            return true;
+        }
+        public void publish(Object token) {
+            if(!World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
+            for(int j=0;j<selected.size();j++) {
+                var e=selected.get(j); for(int i:indices[j]) owners[i]=0;
+                e.count-=indices[j].length; e.mass-=masses[j]; e.generation=nextGenerations[j]; e.reactivatedBodyIds=nextBodyIds.get(j);
+                if(e.count==0) { e.integrity=Integrity.REMOVED; e.reactivatedBodyId=bodyIds[j]; liveRocks--; }
+                else e.integrity=Integrity.DAMAGED;
+            }
+            revision=nextRevision; connectivity.ownershipChanged();
+        }
+    }
+    public PreparedComponentReactivationRemoval prepareComponentReactivationRemoval(List<ComponentReactivationMapping> mappings) {
+        Objects.requireNonNull(mappings); valid(); connectivity.checkOwnershipMutation();
+        if(mappings.isEmpty()) throw new IllegalArgumentException("Empty component group");
+        Math.addExact(connectivity.revision(),2);
+        var grouped=new java.util.TreeMap<Long,java.util.ArrayList<Integer>>();
+        var bodies=new java.util.TreeMap<Long,java.util.ArrayList<Long>>(); var seenCells=new java.util.HashSet<Integer>(); var seenBodies=new java.util.HashSet<Long>();
+        var componentsById=new java.util.HashMap<Long,java.util.Set<List<WorldCell>>>();
+        for(var mapping:mappings) {
+            Objects.requireNonNull(mapping); long id=mapping.settledId();
+            if(id<=0 || id>entries.size() || mapping.bodyId()<=0 || mapping.cells().isEmpty() || !seenBodies.add(mapping.bodyId()))
+                throw new IllegalArgumentException("Invalid component mapping");
+            var entry=entries.get(Math.toIntExact(id-1));
+            if(entry.count<=0 || entry.reactivatedBodyId!=0) throw new IllegalStateException("Settled rock is not live");
+            var validComponents=componentsById.computeIfAbsent(id,key->new java.util.HashSet<>(connectedComponents(key)));
+            if(!validComponents.contains(mapping.cells())) throw new IllegalArgumentException("Mapping is not a complete current component");
+            var indices=grouped.computeIfAbsent(id,ignored->new java.util.ArrayList<>()); bodies.computeIfAbsent(id,ignored->new java.util.ArrayList<>()).add(mapping.bodyId());
+            for(var cell:mapping.cells()) {
+                if(!world.contains(cell.x(),cell.y()) || ownerAt(cell.x(),cell.y())!=id || world.get(cell.x(),cell.y())!=Material.STONE)
+                    throw new IllegalArgumentException("Invalid component ownership");
+                int index=Math.addExact(Math.multiplyExact(cell.y(),world.width()),cell.x());
+                if(!seenCells.add(index)) throw new IllegalArgumentException("Overlapping component cells");
+                indices.add(index);
+            }
+        }
+        var selected=new ArrayList<Entry>(); var histories=new ArrayList<List<Long>>(); int[][] indices=new int[grouped.size()][]; long[] bodyIds=new long[grouped.size()]; int j=0;
+        for(var group:grouped.entrySet()) {
+            selected.add(entries.get(Math.toIntExact(group.getKey()-1))); indices[j]=group.getValue().stream().mapToInt(Integer::intValue).toArray();
+            var ids=bodies.get(group.getKey()); bodyIds[j]=ids.getFirst(); histories.add(List.copyOf(ids)); j++;
+        }
+        return new PreparedComponentReactivationRemoval(List.copyOf(selected),indices,bodyIds,List.copyOf(histories));
+    }
     /** One preallocated transfer of an entire group; each entry keeps its own provenance. */
     public final class PreparedGroupReactivationRemoval {
         private final List<Entry> selected;
         private final long[] generations,nextGenerations,bodyIds;
+        private final List<List<Long>> nextBodyIds;
         private final int[][] indices;
         private final long expectedRevision,expectedWorldRevision,expectedTopologyRevision,nextRevision;
         private PreparedGroupReactivationRemoval(List<Entry> selected,int[][] indices,long[] bodyIds) {
             this.selected=selected; this.indices=indices; this.bodyIds=bodyIds;
             generations=new long[selected.size()]; nextGenerations=new long[selected.size()];
-            for(int i=0;i<selected.size();i++) { generations[i]=selected.get(i).generation; nextGenerations[i]=Math.incrementExact(generations[i]); }
+            var histories=new ArrayList<List<Long>>(selected.size());
+            for(int i=0;i<selected.size();i++) {
+                generations[i]=selected.get(i).generation; nextGenerations[i]=Math.incrementExact(generations[i]);
+                var history=new ArrayList<>(selected.get(i).reactivatedBodyIds); history.add(bodyIds[i]); histories.add(List.copyOf(history));
+            }
+            nextBodyIds=List.copyOf(histories);
             expectedRevision=revision; nextRevision=Math.incrementExact(revision);
             expectedWorldRevision=world.mutationRevision(); expectedTopologyRevision=connectivity.revision();
         }
@@ -188,7 +301,7 @@ public final class SettledRockRegistry {
             if(!World.isReactivationPublicationToken(token)) throw new IllegalStateException("Not a reactivation publication");
             for(int j=0;j<selected.size();j++) {
                 var entry=selected.get(j); for(int i:indices[j]) owners[i]=0;
-                entry.count=0; entry.mass=0; entry.generation=nextGenerations[j]; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyIds[j];
+                entry.count=0; entry.mass=0; entry.generation=nextGenerations[j]; entry.integrity=Integrity.REMOVED; entry.reactivatedBodyId=bodyIds[j]; entry.reactivatedBodyIds=nextBodyIds.get(j);
             }
             liveRocks-=selected.size();
             revision=nextRevision; connectivity.ownershipChanged();

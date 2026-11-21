@@ -10,6 +10,11 @@ import miningsim.world.World;
 
 /** Resumable, deterministic vertical-support analysis for one affected contact component. */
 public final class SettledSupportGraph {
+    /** Deterministic read-only component analysis, independent of publication and coordinator state. */
+    public static ComponentSupportAnalysis.Result analyzeComponents(World world,RockConnectivity topology,SettledRockRegistry settled,
+            List<Long> seeds,int maxRocks,int maxCells,long maxWork) {
+        return ComponentSupportAnalysis.analyze(world,topology,settled,seeds,maxRocks,maxCells,maxWork);
+    }
     public enum Status { IN_PROGRESS, COMPLETE, STALE, LIMIT, INVALID }
     public record Limits(int maxRocks,int maxCells,int workPerStep) {
         public Limits { if(maxRocks<1 || maxCells<1 || workPerStep<1) throw new IllegalArgumentException("Invalid support limits"); }
