@@ -11,6 +11,59 @@ import miningsim.world.Material;
 import org.junit.jupiter.api.Test;
 
 class DisconnectedStackRegressionTest {
+    @Test void severalSupportedRemaindersStayWhileUnsupportedPartFalls() {
+        var old=LargeCompoundBenchmark.fixture("large").session(); var registry=old.structural().registry();
+        for(var f:registry.snapshot()) assertTrue(registry.remove(f.id()));
+        var s=InteractiveSession.headlessLifecycle(old.world(),old.structural(),false,false,SettledSupportCoordinator.Limits.measuredDefaults()); old.retire(); var w=s.world();
+        var cells=new ArrayList<FragmentDescriptor.Cell>(); cells.add(new FragmentDescriptor.Cell(3,0));
+        for(int x=0;x<7;x++) cells.add(new FragmentDescriptor.Cell(x,1));
+        var descriptor=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.MARBLE),cells);
+        for(var c:descriptor.cells()) w.set(2+c.x(),61+c.y(),Material.STONE);
+        long id=s.lifecycle().settled().registerExisting(12,descriptor,2,61);
+        w.set(15,62,Material.STONE); long independent=s.lifecycle().settled().registerExisting(13,row(1),15,62);
+        for(int i=0;i<300 && !s.lifecycle().settled().supportTransitionsAllowed();i++) { s.tick(); assertNull(s.failure()); }
+        s.enqueue(()->{ for(int x:new int[]{3,5,7}) w.set(x,62,Material.AIR); });
+        for(int i=0;i<500 && s.lifecycle().diagnostics().reactivated()==0;i++) { s.tick(); assertNull(s.failure()); assertFalse(s.blocked()); }
+        assertEquals(1,s.lifecycle().diagnostics().reactivated(),s.lifecycle().diagnostics().toString());
+        for(int x:new int[]{2,4,6,8}) assertEquals(id,s.lifecycle().settled().ownerAt(x,62));
+        assertEquals(Material.AIR,w.get(5,61)); assertEquals(0,s.lifecycle().settled().ownerAt(5,61));
+        assertEquals(SubstanceRegistry.MARBLE,s.physics().bodies().getFirst().fragment().substance());
+        assertEquals(4,s.lifecycle().settled().rock(id).remainingCells());
+        for(int i=0;i<300 && !s.lifecycle().settled().supportTransitionsAllowed();i++) s.tick();
+        assertTrue(s.lifecycle().settled().supportTransitionsAllowed());
+        var assemblies=s.lifecycle().assemblyDiagnostics(); assertTrue(assemblies.complete());
+        assertEquals(independent,s.lifecycle().settled().ownerAt(15,62));
+        assertEquals(5,assemblies.assemblies()); assertEquals(5,assemblies.supported()); assertEquals(5,assemblies.contacts());
+    }
+    @Test void componentReactivationReplayIsDeterministic() {
+        var worlds=new ArrayList<miningsim.world.World>(); var sessions=new ArrayList<InteractiveSession>();
+        for(int n=0;n<2;n++) {
+            var old=LargeCompoundBenchmark.fixture("large").session(); var registry=old.structural().registry();
+            for(var f:registry.snapshot()) assertTrue(registry.remove(f.id()));
+            var s=InteractiveSession.headlessLifecycle(old.world(),old.structural(),false,false,SettledSupportCoordinator.Limits.measuredDefaults()); old.retire();
+            var w=s.world(); for(int x=3;x<=7;x++) w.set(x,62,Material.STONE); s.lifecycle().settled().registerExisting(100,row(5),3,62);
+            for(int y=60;y<=61;y++) for(int x=4;x<=6;x++) w.set(x,y,Material.STONE);
+            s.lifecycle().settled().registerExisting(101,row(3),4,61); s.lifecycle().settled().registerExisting(102,row(3),4,60);
+            sessions.add(s); worlds.add(w);
+        }
+        var a=sessions.get(0); var b=sessions.get(1); boolean erased=false,done=false;
+        for(int tick=0;tick<1000;tick++) {
+            a.tick(); b.tick(); assertNull(a.failure()); assertNull(b.failure());
+            assertEquals(a.lifecycle().diagnostics(),b.lifecycle().diagnostics(),"tick "+tick);
+            assertEquals(a.physics().bodies().stream().map(body->List.of(body.id(),body.xCells(),body.yCells(),body.angleRadians(),body.sleeping())).toList(),
+                    b.physics().bodies().stream().map(body->List.of(body.id(),body.xCells(),body.yCells(),body.angleRadians(),body.sleeping())).toList());
+            for(int y=55;y<64;y++) for(int x=0;x<12;x++) {
+                assertEquals(worlds.get(0).get(x,y),worlds.get(1).get(x,y));
+                assertEquals(a.lifecycle().settled().ownerAt(x,y),b.lifecycle().settled().ownerAt(x,y));
+            }
+            if(!erased && a.lifecycle().settled().supportTransitionsAllowed()) {
+                for(int n=0;n<2;n++) { var w=worlds.get(n); sessions.get(n).enqueue(()->{ for(int x=4;x<=6;x++) w.set(x,62,Material.AIR); }); }
+                erased=true;
+            }
+            if(erased && a.lifecycle().diagnostics().reactivated()>=2 && a.physics().bodies().isEmpty() && a.lifecycle().settled().supportTransitionsAllowed()) { done=true; break; }
+        }
+        assertTrue(done,"повторное оседание не завершилось: "+a.lifecycle().diagnostics());
+    }
     private static FragmentDescriptor row(int width) {
         var cells=new ArrayList<FragmentDescriptor.Cell>();
         for(int x=0;x<width;x++) cells.add(new FragmentDescriptor.Cell(x,0));
@@ -56,18 +109,62 @@ class DisconnectedStackRegressionTest {
         var component=settled.connectedComponents(id).getLast();
         var result=miningsim.physics.GroupRockReactivation.prepareComponentReactivation(List.of(new miningsim.physics.GroupRockReactivation.Component(id,component)),world,topology,settled,physics,occupancy,0,new miningsim.physics.GroupRockReactivation.Limits(4,20),null);
         assertEquals(miningsim.physics.GroupRockReactivation.Status.READY,result.status(),result.reason());
+        var stale=miningsim.physics.GroupRockReactivation.prepareComponentReactivation(List.of(new miningsim.physics.GroupRockReactivation.Component(id,component)),world,topology,settled,physics,occupancy,0,new miningsim.physics.GroupRockReactivation.Limits(4,20),null);
+        assertEquals(miningsim.physics.GroupRockReactivation.Status.READY,stale.status(),stale.reason());
         var old=occupancy.snapshot(); long mass=settled.rock(id).massMilligrams();
         topology.setTestBatchObserver(()->{ assertSame(old,occupancy.snapshot()); assertEquals(id,settled.ownerAt(5,18)); assertTrue(physics.bodies().isEmpty()); return false; },null);
         assertEquals(miningsim.world.World.BatchResult.REJECTED,world.commitGroupReactivation(result.plan()));
         assertEquals(mass,settled.rock(id).massMilligrams()); assertEquals(Material.STONE,world.get(5,18));
+        topology.setTestBatchObserver(()->{ throw new IllegalStateException("injected veto failure"); },null);
+        assertThrows(IllegalStateException.class,()->world.commitGroupReactivation(result.plan()));
+        assertSame(old,occupancy.snapshot()); assertEquals(id,settled.ownerAt(5,18)); assertTrue(physics.bodies().isEmpty());
         boolean[] observed={false}; topology.setTestBatchObserver(()->true,()->{
             observed[0]=true; assertEquals(Material.AIR,world.get(5,18)); assertEquals(0,settled.ownerAt(5,18));
             assertEquals(id,settled.ownerAt(3,18)); assertEquals(1,physics.bodies().size());
             assertEquals(mass,settled.rock(id).massMilligrams()+registry.totalMassMilligrams());
         });
         assertEquals(miningsim.world.World.BatchResult.CHANGED,world.commitGroupReactivation(result.plan())); assertTrue(observed[0]);
-        assertEquals(List.of(physics.bodies().getFirst().id()),settled.reactivatedBodyIds(id));
         topology.setTestBatchObserver(null,null);
+        assertEquals(miningsim.world.World.BatchResult.REJECTED,world.commitGroupReactivation(stale.plan()));
+        assertEquals(List.of(physics.bodies().getFirst().id()),settled.reactivatedBodyIds(id));
+    }
+    @Test void atomicPublicationOfTwoCellsRequiresOneIndivisibleBatch() {
+        var world=new miningsim.world.World(20,20,miningsim.world.World.Mode.BEDROCK_ENABLED);
+        var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,20);
+        world.set(3,18,Material.STONE); world.set(4,18,Material.STONE); long id=settled.registerExisting(17,row(2),3,18);
+        while(topology.pending()) topology.advance(1000);
+        var registry=new miningsim.fragment.FragmentRegistry(4);
+        var solver=new miningsim.physics.StaticContactSolver(new miningsim.physics.StaticCollisionQuery(world,10000,100000,miningsim.physics.StaticCollisionQuery.MaterialPolicy.DISPLACE_GRANULAR),miningsim.physics.StaticContactSolver.Config.defaults());
+        var physics=new miningsim.physics.RigidBodySystem(registry,4,solver,miningsim.physics.RigidBodySystem.MotionConfig.defaults(),new miningsim.physics.BodyCollisionQuery(new miningsim.physics.BodyCollisionQuery.Limits(10000,100000,4096,4096)),new miningsim.physics.BodyContactSolver(miningsim.physics.BodyContactSolver.Config.defaults()));
+        physics.synchronize(); var occupancy=new miningsim.physics.RigidBodyOccupancyIndex(world,miningsim.physics.RigidBodyOccupancyIndex.Limits.defaults()); occupancy.rebuild(physics,0);
+        var selection=new miningsim.physics.GroupRockReactivation.Component(id,settled.connectedComponents(id).getFirst());
+        var result=miningsim.physics.GroupRockReactivation.prepareComponentReactivation(List.of(selection),world,topology,settled,physics,occupancy,0,new miningsim.physics.GroupRockReactivation.Limits(4,20),null);
+        assertEquals(miningsim.physics.GroupRockReactivation.Status.READY,result.status(),result.reason());
+        assertEquals(2,result.plan().changes().size()); boolean[] observed={false,false};
+        topology.setTestBatchObserver(()->{ observed[0]=true; assertEquals(Material.STONE,world.get(3,18)); assertEquals(Material.STONE,world.get(4,18)); return true; },()->{
+            observed[1]=true; assertEquals(Material.AIR,world.get(3,18)); assertEquals(Material.AIR,world.get(4,18));
+            assertEquals(0,settled.liveRocks()); assertEquals(1,physics.bodies().size());
+        });
+        assertEquals(miningsim.world.World.BatchResult.CHANGED,world.commitGroupReactivation(result.plan()));
+        assertArrayEquals(new boolean[]{true,true},observed); topology.setTestBatchObserver(null,null);
+    }
+    @Test void twoDisconnectedComponentsShareProvenanceButGetSeparateBodies() {
+        var world=new miningsim.world.World(20,20,miningsim.world.World.Mode.BEDROCK_ENABLED);
+        var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,20);
+        for(int x=3;x<=7;x++) world.set(x,18,Material.STONE); long id=settled.registerExisting(17,row(5),3,18);
+        for(int x=4;x<=6;x++) world.set(x,18,Material.AIR); while(topology.pending()) topology.advance(1000);
+        var registry=new miningsim.fragment.FragmentRegistry(4);
+        var solver=new miningsim.physics.StaticContactSolver(new miningsim.physics.StaticCollisionQuery(world,10000,100000,miningsim.physics.StaticCollisionQuery.MaterialPolicy.DISPLACE_GRANULAR),miningsim.physics.StaticContactSolver.Config.defaults());
+        var physics=new miningsim.physics.RigidBodySystem(registry,4,solver,miningsim.physics.RigidBodySystem.MotionConfig.defaults(),new miningsim.physics.BodyCollisionQuery(new miningsim.physics.BodyCollisionQuery.Limits(10000,100000,4096,4096)),new miningsim.physics.BodyContactSolver(miningsim.physics.BodyContactSolver.Config.defaults()));
+        physics.synchronize(); var occupancy=new miningsim.physics.RigidBodyOccupancyIndex(world,miningsim.physics.RigidBodyOccupancyIndex.Limits.defaults()); occupancy.rebuild(physics,0);
+        var selection=settled.connectedComponents(id).stream().map(c->new miningsim.physics.GroupRockReactivation.Component(id,c)).toList();
+        long mass=settled.rock(id).massMilligrams();
+        var result=miningsim.physics.GroupRockReactivation.prepareComponentReactivation(selection,world,topology,settled,physics,occupancy,0,new miningsim.physics.GroupRockReactivation.Limits(4,20),null);
+        assertEquals(miningsim.physics.GroupRockReactivation.Status.READY,result.status(),result.reason());
+        assertEquals(miningsim.world.World.BatchResult.CHANGED,world.commitGroupReactivation(result.plan()));
+        assertEquals(2,physics.bodies().size()); assertEquals(mass,registry.totalMassMilligrams()); assertEquals(0,settled.liveRocks());
+        assertEquals(2,settled.reactivatedBodyIds(id).size()); assertEquals(2,settled.reactivatedBodyIds(id).stream().distinct().count());
+        assertTrue(physics.bodies().stream().allMatch(b->b.fragment().substance().equals(SubstanceRegistry.STONE)));
     }
     @Test void onlyUnsupportedComponentOfDamagedRockReactivates() {
         var original=LargeCompoundBenchmark.fixture("large").session(); var fragments=original.structural().registry();
@@ -86,6 +183,8 @@ class DisconnectedStackRegressionTest {
         assertTrue(fell,s.lifecycle().diagnostics().toString());
         assertEquals(Material.STONE,world.get(3,62)); assertEquals(id,s.lifecycle().settled().ownerAt(3,62));
         assertEquals(Material.AIR,world.get(5,61)); assertEquals(0,s.lifecycle().settled().ownerAt(5,61));
+        for(int i=0;i<180;i++) { s.tick(); assertNull(s.failure()); assertFalse(s.blocked());
+            assertEquals(id,s.lifecycle().settled().ownerAt(3,62),"supported remainder tick "+i); }
     }
     @Test void erasedBridgeDoesNotStrandUnsupportedUpperBlocks() {
         var original=LargeCompoundBenchmark.fixture("large").session(); var fragments=original.structural().registry();
@@ -107,5 +206,7 @@ class DisconnectedStackRegressionTest {
         }
         assertTrue(fell,s.lifecycle().diagnostics().toString());
         assertEquals(base,s.lifecycle().settled().ownerAt(3,62)); assertEquals(base,s.lifecycle().settled().ownerAt(7,62));
+        for(int i=0;i<180;i++) { s.tick(); assertNull(s.failure()); assertFalse(s.blocked());
+            assertEquals(base,s.lifecycle().settled().ownerAt(3,62)); assertEquals(base,s.lifecycle().settled().ownerAt(7,62)); }
     }
 }

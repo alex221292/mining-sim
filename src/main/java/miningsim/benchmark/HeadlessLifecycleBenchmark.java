@@ -54,6 +54,7 @@ public final class HeadlessLifecycleBenchmark {
             add(measured,"large.support",d.supportNanos()); add(measured,"large.settling.prepare",d.planningNanos());
             add(measured,"large.settling.commit",d.commitNanos());
             if(d.planningNanos()==0) add(measured,"large.ordinary-tick",elapsed);
+            else add(measured,"large.settling-transition-tick",elapsed);
             if(d.settled()==3) { done=true; break; }
         }
         if(!done) throw new IllegalStateException("Incomplete large settling: "+s.lifecycle().diagnostics());

@@ -73,6 +73,11 @@ public final class SettledSupportGraph {
     private boolean groundChanged;
     private double left,right;
     private Status status=Status.IN_PROGRESS;
+    public long work() { return work; }
+    private boolean damagedObserved;
+    private boolean stopOnDamage;
+    public boolean damagedObserved() { return damagedObserved; }
+    void stopOnDamage() { stopOnDamage=true; }
     private List<Long> result=List.of();
     private boolean instrument;
     private final long[] phaseNanos=new long[3];
@@ -122,6 +127,7 @@ public final class SettledSupportGraph {
                     SettledRockRegistry.Rock rock;
                     try { rock=settled.rock(id); } catch(IllegalArgumentException ex) { status=Status.INVALID; break; }
                     if(rock.remainingCells()==0) continue;
+                    if(rock.integrity()==SettledRockRegistry.Integrity.DAMAGED) { damagedObserved=true; if(stopOnDamage) break; }
                     if(rock.descriptor().cellCount()>limits.maxCells()-cells) { status=Status.LIMIT; break; }
                     current=new Node(rock); nodes.put(id,current);
                     if(remaining==0) continue;

@@ -4,6 +4,7 @@
 Интеграция lifecycle в Swing и ожидающая ручная приёмка: [M4.5b.4b](docs/m4-5b4b-swing-lifecycle_ru.md).
 Предполагаемая общая опора settled-глыб: [M4.5b.4c](docs/m4-5b4c-prospective-support_ru.md).
 Реактивация стопок и проверка нагрузок: [M4.5b.4c.1](docs/m4-5b4c1-stack-fix_ru.md).
+Реактивация разъединённых settled-компонент: [M4.5b.4c.2](docs/m4-5b4c2-component-reactivation_ru.md).
 
 ## Видение
 

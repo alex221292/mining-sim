@@ -34,19 +34,21 @@ class StackReactivationRegressionTest {
         var cell=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0)));
         w.set(5,62,Material.STONE); w.set(6,62,Material.STONE); w.set(5,61,Material.STONE);
         var pair=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0)));
-        s.lifecycle().settled().registerExisting(10,pair,5,62); s.lifecycle().settled().registerExisting(11,cell,5,61);
+        long base=s.lifecycle().settled().registerExisting(10,pair,5,62); s.lifecycle().settled().registerExisting(11,cell,5,61);
         registry.insert(cell,5,60,0); s.physics().synchronize(); s.occupancy().rebuild(s.physics(),0);
         s.structural().connectivity().setTestBatchObserver(()->!s.lifecycle().inSettlingPublication(),null);
         for(int i=0;i<500;i++) { s.tick(); assertNull(s.failure(),"tick "+i); }
         assertEquals(1,s.physics().bodies().size()); assertTrue(s.physics().bodies().getFirst().sleeping());
         s.enqueue(()->w.set(5,62,Material.AIR));
-        for(int i=0;i<500 && s.lifecycle().diagnostics().reactivated()<2;i++) { s.tick(); assertNull(s.failure(),"tick "+i); }
-        assertEquals(2,s.lifecycle().diagnostics().reactivated(),s.lifecycle().diagnostics()+" body y="+s.physics().bodies().getFirst().yCells()+" angle="+s.physics().bodies().getFirst().angleRadians()+" occupancy="+java.util.Arrays.toString(s.occupancy().snapshot().bodyIdsAt(5,61)));
-        assertEquals(3,s.physics().bodies().size()); assertEquals(0,s.lifecycle().settled().liveRocks());
+        for(int i=0;i<500 && s.lifecycle().diagnostics().reactivated()<1;i++) { s.tick(); assertNull(s.failure(),"tick "+i); }
+        assertEquals(1,s.lifecycle().diagnostics().reactivated(),s.lifecycle().diagnostics()+" body y="+s.physics().bodies().getFirst().yCells()+" angle="+s.physics().bodies().getFirst().angleRadians()+" occupancy="+java.util.Arrays.toString(s.occupancy().snapshot().bodyIdsAt(5,61)));
+        assertEquals(2,s.physics().bodies().size()); assertEquals(1,s.lifecycle().settled().liveRocks());
+        assertEquals(base,s.lifecycle().settled().ownerAt(6,62),"supported remainder stays settled");
         long reactivated=s.physics().bodies().stream().mapToLong(b->b.id()).max().orElseThrow();
         double y=s.physics().body(reactivated).yCells(); boolean fell=false;
         for(int i=0;i<60;i++) { s.tick(); assertNull(s.failure(),"post-reactivation tick "+i); assertFalse(s.blocked());
-            if(s.physics().body(reactivated).yCells()>y+0.02) fell=true; }
+            if(s.physics().body(reactivated).yCells()>y+0.02) fell=true;
+            assertEquals(base,s.lifecycle().settled().ownerAt(6,62),"supported remainder tick "+i); }
         assertTrue(fell,"reactivated rock did not fall");
     }
 }

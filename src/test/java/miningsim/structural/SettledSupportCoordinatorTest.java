@@ -11,6 +11,76 @@ import miningsim.world.World;
 import org.junit.jupiter.api.Test;
 
 class SettledSupportCoordinatorTest {
+    @Test void budgetOneNeverPublishesPartialUnsupportedComponent() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,20);
+        var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.MARBLE),List.of(new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0),new FragmentDescriptor.Cell(0,1),new FragmentDescriptor.Cell(1,1)));
+        for(var c:shape.cells()) world.set(3+c.x(),17+c.y(),Material.STONE); long id=settled.registerExisting(1,shape,3,17);
+        var registry=new FragmentRegistry(10); var solver=new StaticContactSolver(new StaticCollisionQuery(world,10000,100000,StaticCollisionQuery.MaterialPolicy.DISPLACE_GRANULAR),StaticContactSolver.Config.defaults());
+        var physics=new RigidBodySystem(registry,4,solver,RigidBodySystem.MotionConfig.defaults(),new BodyCollisionQuery(new BodyCollisionQuery.Limits(10000,100000,4096,4096)),new BodyContactSolver(BodyContactSolver.Config.defaults()));
+        physics.synchronize(); var occupancy=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults()); occupancy.rebuild(physics,0);
+        var coordinator=new SettledSupportCoordinator(world,topology,settled,physics,occupancy,new SettledSupportCoordinator.Limits(2,20,100,1,10,100,1));
+        var fixture=new Fixture(world,topology,settled,registry,physics,occupancy,coordinator); untilIdle(fixture);
+        world.set(4,17,Material.AIR); world.set(4,18,Material.AIR); long mass=settled.rock(id).massMilligrams(); var old=occupancy.snapshot();
+        boolean committed=false; int calls=0;
+        for(;calls<1000;calls++) {
+            var result=coordinator.step(0); assertTrue(coordinator.componentWork()<=1);
+            if(result.status()==SettledSupportCoordinator.Status.COMMITTED) { committed=true; break; }
+            assertEquals(id,settled.ownerAt(3,18)); assertEquals(id,settled.ownerAt(5,17));
+            assertEquals(mass,settled.rock(id).massMilligrams()); assertTrue(physics.bodies().isEmpty()); assertSame(old,occupancy.snapshot());
+        }
+        assertTrue(committed,"component analysis did not publish"); assertTrue(calls>1);
+        assertEquals(id,settled.ownerAt(3,18)); assertEquals(0,settled.ownerAt(5,17)); assertEquals(1,physics.bodies().size());
+        assertEquals(SubstanceRegistry.MARBLE,physics.bodies().getFirst().fragment().substance());
+        assertEquals(mass,settled.rock(id).massMilligrams()+registry.totalMassMilligrams());
+    }
+    @Test void componentAnalysisRestartsOnWorldAndOwnershipChanges() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,20);
+        var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),List.of(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0)));
+        for(int x=3;x<=5;x++) world.set(x,18,Material.STONE); long id=settled.registerExisting(1,shape,3,18);
+        var registry=new FragmentRegistry(10); var solver=new StaticContactSolver(new StaticCollisionQuery(world,10000,100000,StaticCollisionQuery.MaterialPolicy.DISPLACE_GRANULAR),StaticContactSolver.Config.defaults());
+        var physics=new RigidBodySystem(registry,4,solver,RigidBodySystem.MotionConfig.defaults(),new BodyCollisionQuery(new BodyCollisionQuery.Limits(10000,100000,4096,4096)),new BodyContactSolver(BodyContactSolver.Config.defaults()));
+        physics.synchronize(); var occupancy=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults()); occupancy.rebuild(physics,0);
+        var coordinator=new SettledSupportCoordinator(world,topology,settled,physics,occupancy,new SettledSupportCoordinator.Limits(2,20,100,1,10,100,1));
+        var fixture=new Fixture(world,topology,settled,registry,physics,occupancy,coordinator); untilIdle(fixture); world.set(4,18,Material.AIR);
+        for(int i=0;i<500 && !coordinator.componentAnalysisPending();i++) coordinator.step(0);
+        assertTrue(coordinator.componentAnalysisPending()); assertFalse(settled.supportTransitionsAllowed());
+        for(int i=0;i<5;i++) { coordinator.step(0); assertTrue(coordinator.componentWork()<=1); }
+        world.set(0,0,Material.STONE); assertEquals(SettledSupportCoordinator.Status.IN_PROGRESS,coordinator.step(0).status());
+        assertFalse(coordinator.componentAnalysisPending()); assertTrue(physics.bodies().isEmpty());
+        for(int i=0;i<500 && !coordinator.componentAnalysisPending();i++) coordinator.step(0);
+        assertTrue(coordinator.componentAnalysisPending()); world.set(3,18,Material.AIR);
+        assertEquals(SettledSupportCoordinator.Status.IN_PROGRESS,coordinator.step(0).status());
+        assertFalse(coordinator.componentAnalysisPending()); assertEquals(1,settled.rock(id).remainingCells()); assertTrue(physics.bodies().isEmpty());
+        untilIdle(fixture); assertEquals(id,settled.ownerAt(5,18)); assertTrue(physics.bodies().isEmpty());
+    }
+    @Test void componentAnalysisRespectsPerTickWorkBudget() {
+        var world=new World(20,20,World.Mode.BEDROCK_ENABLED); var topology=new RockConnectivity(world); var settled=new SettledRockRegistry(world,topology,10,20);
+        var cells=List.of(new FragmentDescriptor.Cell(0,0),new FragmentDescriptor.Cell(1,0),new FragmentDescriptor.Cell(2,0));
+        var shape=new FragmentDescriptor(SubstanceRegistry.reference().get(SubstanceRegistry.STONE),cells);
+        for(int x=3;x<=5;x++) world.set(x,18,Material.STONE);
+        settled.registerExisting(1,shape,3,18);
+        var registry=new FragmentRegistry(10);
+        var solver=new StaticContactSolver(new StaticCollisionQuery(world,10000,100000,StaticCollisionQuery.MaterialPolicy.DISPLACE_GRANULAR),StaticContactSolver.Config.defaults());
+        var physics=new RigidBodySystem(registry,4,solver,RigidBodySystem.MotionConfig.defaults(),new BodyCollisionQuery(new BodyCollisionQuery.Limits(10000,100000,4096,4096)),new BodyContactSolver(BodyContactSolver.Config.defaults()));
+        physics.synchronize(); var occupancy=new RigidBodyOccupancyIndex(world,RigidBodyOccupancyIndex.Limits.defaults()); occupancy.rebuild(physics,0);
+        var coordinator=new SettledSupportCoordinator(world,topology,settled,physics,occupancy,new SettledSupportCoordinator.Limits(2,20,100,1,10,100,1));
+        var f=new Fixture(world,topology,settled,registry,physics,occupancy,coordinator); untilIdle(f); world.set(4,18,Material.AIR);
+        world.set(10,1,Material.SAND); var cellular=new miningsim.simulation.Simulation(world,123);
+        boolean componentObserved=false,finished=false; int calls=0; long max=0;
+        for(int tick=0;tick<1000;tick++) {
+            var result=coordinator.step(0); calls++;
+            cellular.step();
+            long work=coordinator.componentWork();
+            max=Math.max(max,work); if(work>0) componentObserved=true;
+            assertTrue(work<=1,"component work="+work+", budget=1, tick="+tick);
+            assertTrue(physics.bodies().isEmpty(),"partial reactivation at tick "+tick);
+            assertEquals(2,settled.rock(1).remainingCells());
+            if(result.status()==SettledSupportCoordinator.Status.IDLE) { finished=true; break; }
+        }
+        assertTrue(componentObserved); assertTrue(finished,"analysis did not complete");
+        assertEquals(Material.AIR,world.get(10,1)); assertEquals(Material.SAND,world.get(10,18));
+        System.out.println("component support maxWork="+max+" calls="+calls);
+    }
     private record Fixture(World world,RockConnectivity topology,SettledRockRegistry settled,FragmentRegistry registry,
                            RigidBodySystem physics,RigidBodyOccupancyIndex occupancy,SettledSupportCoordinator coordinator) { }
     private static long rock(World world,SettledRockRegistry settled,int x,int y,long source) {
