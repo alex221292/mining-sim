@@ -41,6 +41,7 @@ import miningsim.render.Renderer;
 import miningsim.persistence.WorldIO;
 import miningsim.world.Material;
 import miningsim.world.World;
+import miningsim.block.FixedBlockSession;
 
 public final class Main {
     public static void main(String[] args) {
@@ -57,8 +58,10 @@ public final class Main {
     private static final class Sandbox extends JPanel {
         private static final long TICK = 1_000_000_000L / 60;
         private World world = new World(400, 300, World.Mode.BEDROCK_ENABLED);
-        private InteractiveSession session = SandboxSessionFactory.create(world,false);
-        private SimulationControl control = new SimulationControl(session::tick);
+        private InteractiveSession session;
+        private FixedBlockSession fixed = new FixedBlockSession(world,12345);
+        private int rockBlockSizeCells = miningsim.block.FixedBlockWorld.DEFAULT_BLOCK_SIZE;
+        private SimulationControl control = new SimulationControl(fixed::tick);
         private Renderer renderer = new Java2DRenderer(world.width(), world.height());
         private final Camera2D camera = new Camera2D();
         private final Timer timer;
@@ -66,6 +69,8 @@ public final class Main {
         private long previous = System.nanoTime(), accumulator, statsStart = previous;
         private int frames, ticks, fps, tps;
         private boolean left, right;
+        private int strokeX,strokeY; private boolean strokeStarted;
+        private int hoverX=-1,hoverY=-1;
         private boolean panLeft, panRight, panUp, panDown;
         private StructuralSimulationController structural;
         private boolean diagnostics;
@@ -78,20 +83,23 @@ public final class Main {
             MouseAdapter mouse = new MouseAdapter() {
                 @Override public void mousePressed(MouseEvent e) {
                     requestFocusInWindow();
-                    if (SwingUtilities.isMiddleMouseButton(e) && session.isCoupled()) {
+                    if (SwingUtilities.isMiddleMouseButton(e) && session!=null && session.isCoupled()) {
                         var target=session; int x=(int)Math.floor(camera.screenToWorldX(e.getX())),y=(int)Math.floor(camera.screenToWorldY(e.getY()));
                         session.enqueue(()->target.selectRock(x,y));
                         repaint(); return;
                     }
                     if (SwingUtilities.isLeftMouseButton(e)) left = true;
                     if (SwingUtilities.isRightMouseButton(e)) right = true;
+                    strokeStarted=false;
                     paintAt(e);
                 }
                 @Override public void mouseReleased(MouseEvent e) {
                     if (SwingUtilities.isLeftMouseButton(e)) left = false;
                     if (SwingUtilities.isRightMouseButton(e)) right = false;
+                    if(fixed!=null) { var target=fixed; target.enqueue(()->target.blocks().releaseStroke()); strokeStarted=false; }
                 }
                 @Override public void mouseDragged(MouseEvent e) { paintAt(e); }
+                @Override public void mouseMoved(MouseEvent e) { hoverX=(int)Math.floor(camera.screenToWorldX(e.getX())); hoverY=(int)Math.floor(camera.screenToWorldY(e.getY())); }
                 @Override public void mouseWheelMoved(MouseWheelEvent e) {
                     requestFocusInWindow();
                     camera.zoomAt(camera.zoom() * Math.pow(1.2, -e.getPreciseWheelRotation()), e.getX(), e.getY());
@@ -103,6 +111,7 @@ public final class Main {
             addFocusListener(new FocusAdapter() {
                 @Override public void focusLost(FocusEvent e) {
                     panLeft = panRight = panUp = panDown = left = right = false;
+                    if(fixed!=null) { var target=fixed; target.enqueue(()->target.blocks().releaseStroke()); strokeStarted=false; }
                 }
             });
             addKeyListener(new KeyAdapter() {
@@ -121,11 +130,12 @@ public final class Main {
                         case KeyEvent.VK_6 -> brush = Material.SOIL;
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
-                        case KeyEvent.VK_F3 -> { diagnostics = !diagnostics; var target=session; boolean enabled=diagnostics; target.enqueue(()->target.enableProfiling(enabled)); }
+                        case KeyEvent.VK_F3 -> { diagnostics = !diagnostics; var target=session; boolean enabled=diagnostics; if(target!=null) target.enqueue(()->target.enableProfiling(enabled)); }
                         case KeyEvent.VK_F4 -> chooseReferenceScene();
-                        case KeyEvent.VK_F5 -> { if (session.isCoupled()) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
+                        case KeyEvent.VK_F5 -> { if (session!=null && session.isCoupled()) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
                         case KeyEvent.VK_C -> resetWorld();
-                        case KeyEvent.VK_F6 -> session.resume();
+                        case KeyEvent.VK_F6 -> { if(session!=null) session.resume(); }
+                        case KeyEvent.VK_F7 -> switchRockBlockSize();
                         case KeyEvent.VK_LEFT -> panLeft = true;
                         case KeyEvent.VK_RIGHT -> panRight = true;
                         case KeyEvent.VK_UP -> panUp = true;
@@ -153,13 +163,14 @@ public final class Main {
             // Modal dialogs run a nested event loop; stopping the timer freezes the world.
             timer.stop();
             try {
+                if(save && fixed!=null) { JOptionPane.showMessageDialog(this,"Fixed-block worlds cannot yet be saved without losing block ownership.","Save unavailable",JOptionPane.WARNING_MESSAGE); return; }
                 JFileChooser chooser = new JFileChooser();
                 chooser.setFileFilter(new FileNameExtensionFilter("Mining Sim world (*.msim)", "msim"));
                 int result = save ? chooser.showSaveDialog(this) : chooser.showOpenDialog(this);
                 if (result != JFileChooser.APPROVE_OPTION) return;
                 Path path = chooser.getSelectedFile().toPath();
                 if (save) {
-                    if (SandboxSessionFactory.losesLifecycleState(session) && JOptionPane.showConfirmDialog(this,
+                    if (session!=null && SandboxSessionFactory.losesLifecycleState(session) && JOptionPane.showConfirmDialog(this,
                             "World-only save omits rigid bodies and settled-rock provenance. Continue?",
                             "Incomplete world save",JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.YES_OPTION) return;
                     if (!path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".msim"))
@@ -168,15 +179,17 @@ public final class Main {
                             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
                     WorldIO.write(world, path);
                 } else {
-                    if (SandboxSessionFactory.losesLifecycleState(session) && JOptionPane.showConfirmDialog(this,
+                    if ((fixed!=null && fixed.blocks().size()>0 || session!=null && SandboxSessionFactory.losesLifecycleState(session)) && JOptionPane.showConfirmDialog(this,
                             "Loading replaces the current rigid bodies and settled-rock state. Continue?",
                             "Replace current session",JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.YES_OPTION) return;
                     World loaded = WorldIO.read(path);
-                    InteractiveSession nextSession = SandboxSessionFactory.create(loaded,diagnostics);
-                    SimulationControl nextControl = new SimulationControl(nextSession::tick);
+                    for(int y=0;y<loaded.height();y++) for(int x=0;x<loaded.width();x++) if(loaded.get(x,y)==Material.STONE) throw new IOException("World contains legacy STONE; fixed-block import is not supported.");
+                    if(loaded.mode()!=World.Mode.BEDROCK_ENABLED) throw new IOException("Fixed-block sandbox requires a bedrock world.");
+                    var nextFixed=new FixedBlockSession(loaded,12345,rockBlockSizeCells);
+                    SimulationControl nextControl = new SimulationControl(nextFixed::tick);
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
-                    session.retire(); world = loaded; session=nextSession; control = nextControl; renderer = nextRenderer;
+                    if(session!=null) session.retire(); world = loaded; session=null; fixed=nextFixed; control = nextControl; renderer = nextRenderer;
                     structural = null; sceneIndex = -1; sceneName = "";
                     camera.reset();
                 }
@@ -190,12 +203,22 @@ public final class Main {
 
         private void resetWorld() {
             boolean paused=control.paused();
-            var nextWorld=new World(world.width(),world.height(),world.mode());
-            var nextSession=SandboxSessionFactory.create(nextWorld,diagnostics); var nextControl=new SimulationControl(nextSession::tick);
+            var nextWorld=new World(world.width(),world.height(),World.Mode.BEDROCK_ENABLED);
+            var nextFixed=new FixedBlockSession(nextWorld,12345,rockBlockSizeCells); var nextControl=new SimulationControl(nextFixed::tick);
             var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
             if(paused) nextControl.togglePause();
-            session.retire(); world=nextWorld; structural=null; session=nextSession; control=nextControl; renderer=nextRenderer;
-            sceneIndex=-1; sceneName="";
+            if(session!=null) session.retire(); world=nextWorld; structural=null; session=null; fixed=nextFixed; control=nextControl; renderer=nextRenderer;
+            sceneIndex=-1; sceneName=""; left=right=strokeStarted=false;
+        }
+
+        private void switchRockBlockSize() {
+            timer.stop();
+            try {
+                int next=rockBlockSizeCells==8?4:8;
+                if(JOptionPane.showConfirmDialog(this,"Switch to "+next+"x"+next+" blocks? The current scene will be erased.",
+                        "Replace scene",JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.YES_OPTION) return;
+                rockBlockSizeCells=next; resetWorld();
+            } finally { previous=System.nanoTime(); accumulator=0; timer.start(); requestFocusInWindow(); repaint(); }
         }
 
         private void chooseReferenceScene() {
@@ -225,7 +248,7 @@ public final class Main {
                 if(next>=5 && next<=7) { nextStructural.tick(); nextSession.extractSelected(); }
                 var nextControl=new SimulationControl(nextSession::tick); if(paused) nextControl.togglePause();
                 var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
-                session.retire(); world=nextWorld; structural=nextStructural; session=nextSession; control=nextControl; renderer=nextRenderer;
+                if(session!=null) session.retire(); world=nextWorld; structural=nextStructural; session=nextSession; fixed=null; control=nextControl; renderer=nextRenderer;
                 sceneIndex = next; sceneName = scene.name();
                 camera.reset(); camera.zoomAt(Camera2D.MAX_ZOOM,0,0);
                 camera.pan(-Math.max(0,(getWidth()/camera.zoom()-world.width())/2), -Math.max(0,(getHeight()/camera.zoom()-world.height())/2));
@@ -236,6 +259,15 @@ public final class Main {
         private void paintAt(MouseEvent e) {
             if (getWidth() <= 0 || getHeight() <= 0 || (!left && !right)) return;
             double x=camera.screenToWorldX(e.getX()),y=camera.screenToWorldY(e.getY());
+            hoverX=(int)Math.floor(x); hoverY=(int)Math.floor(y);
+            if(fixed!=null) {
+                int ix=(int)Math.floor(x),iy=(int)Math.floor(y); if(!world.contains(ix,iy)) { strokeStarted=false; return; }
+                var target=fixed; var material=right?Material.AIR:brush;
+                int previousX=strokeStarted?strokeX:ix,previousY=strokeStarted?strokeY:iy; strokeX=ix; strokeY=iy; strokeStarted=true;
+                if(right || material==Material.STONE) target.enqueue(()->target.blockStroke(previousX,previousY,ix,iy,material==Material.AIR));
+                if(material!=Material.STONE) target.enqueue(()->target.paintCells(ix,iy,3,material));
+                return;
+            }
             var target=session; var material=right?Material.AIR:brush;
             target.enqueue(()->Brush.paintWorld(target.world(),x,y,3,material,
                     target.isCoupled()?target.occupancy().snapshot():null));
@@ -266,25 +298,42 @@ public final class Main {
             super.paintComponent(graphics);
             Graphics2D g = (Graphics2D) graphics.create();
             renderer.render(g, world, camera, getWidth(), getHeight());
-            if (session.isCoupled()) FragmentOverlay.renderBodies(g,camera,session.physics().bodies());
+            if(fixed!=null) {
+                g.setColor(new Color(0x45515d));
+                for(var block:fixed.blocks().blocks()) {
+                    int x=(int)Math.round(camera.worldToScreenX(block.x())),y=(int)Math.round(camera.worldToScreenY(block.y()));
+                    int size=(int)Math.round(fixed.blocks().rockBlockSizeCells()*camera.zoom());
+                    if(x<getWidth() && y<getHeight() && x+size>0 && y+size>0) g.drawRect(x,y,size,size);
+                }
+            }
+            if (session!=null && session.isCoupled()) FragmentOverlay.renderBodies(g,camera,session.physics().bodies());
             if (diagnostics && structural != null) CrackOverlay.render(g,camera,structural.view().marks());
             g.setColor(Color.BLACK);
             g.setStroke(new BasicStroke(1));
             g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 445 : 110);
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
-            String runState=session.blocked()?"BLOCKED":control.paused()?"PAUSED":session.failure()!=null?"RETRYING":"RUNNING";
-            g.drawString("Brush: " + brush + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
+            String runState=session!=null && session.blocked()?"BLOCKED":control.paused()?"PAUSED":session!=null && session.failure()!=null?"RETRYING":"RUNNING";
+            g.drawString("Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells+(rockBlockSizeCells==4?" EXPERIMENTAL":""):"") + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
-            if(session.failure()!=null) {
+            if(session!=null && session.failure()!=null) {
                 String reason=session.failure(); if(reason.length()>85) reason=reason.substring(0,82)+"...";
                 g.drawString(reason+" | F6 retry",8,67);
             } else g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
-            g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
-            g.drawString("F3: diagnostics | F4: scene | F5: extract | F6: retry | Middle click: select",8,101);
+            g.drawString(fixed!=null?"Fixed blocks: save unavailable | Ctrl+O: load":"Ctrl+S: save | Ctrl+O: load", 8, 84);
+            g.drawString(fixed!=null?"F3: diagnostics | F4: reference scene | F7: block size (clears scene)":"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: block size",8,101);
             if (diagnostics) {
+                if(fixed!=null) {
+                    var b=fixed.blocks(); var list=b.blocks(); long falling=list.stream().filter(v->v.state()==miningsim.block.FixedBlockWorld.State.FALLING).count();
+                    g.drawString("Rock mode: FIXED_BLOCK | blocks "+list.size()+" | STATIC "+(list.size()-falling)+" | FALLING "+falling,8,118);
+                    g.drawString(String.format(Locale.ROOT,"Block update %.3f ms | rejected %d | cellular ticks %d",b.updateNanos()/1e6,b.rejected(),fixed.cellularTicks()),8,135);
+                    var blocked=b.diagnostics().stream().filter(d->d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_DISPLACEMENT_BLOCKED || d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_SEARCH_BUDGET_EXCEEDED || d.reason()==miningsim.block.FixedBlockWorld.Reason.BLOCKED_BY_STONE || d.reason()==miningsim.block.FixedBlockWorld.Reason.INVALID_OR_STALE_PLAN).findFirst();
+                    if(blocked.isPresent()) { var d=blocked.get(); g.drawString("Block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,152); }
+                    var hovered=b.blockAt(hoverX,hoverY);
+                    if(hovered!=null) b.diagnostics().stream().filter(d->d.id()==hovered.id()).findFirst().ifPresent(d->g.drawString("Cursor block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,169));
+                } else {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {
                     var v = structural.view(); long broken = v.marks().stream().filter(StructuralSimulationController.Mark::broken).count();
@@ -302,6 +351,7 @@ public final class Main {
                             d.detached(),d.detachedCells(),d.total(),d.deferred(),d.tooLarge(),d.rejected()),8,203);
                     var message=d.failure(); if(message.length()>100) message=message.substring(0,97)+"...";
                     g.drawString(message,8,220);
+                }
                 }
             }
             g.dispose();

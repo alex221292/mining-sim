@@ -5,6 +5,11 @@
 Предполагаемая общая опора settled-глыб: [M4.5b.4c](docs/m4-5b4c-prospective-support_ru.md).
 Реактивация стопок и проверка нагрузок: [M4.5b.4c.1](docs/m4-5b4c1-stack-fix_ru.md).
 Реактивация разъединённых settled-компонент: [M4.5b.4c.2](docs/m4-5b4c2-component-reactivation_ru.md).
+Песочница с фиксированными блоками: [M4.6a](docs/m4-6a-fixed-block-rock_ru.md).
+Вытеснение воды фиксированными блоками: [M4.6b](docs/m4-6b-water-displacement_ru.md).
+Исправление препятствий в открытом бассейне: [M4.6b.1](docs/m4-6b1-open-pool_ru.md).
+Стабилизация блоков и задержка падения: [M4.6b.2](docs/m4-6b2-stabilization_ru.md).
+Настраиваемый размер фиксированных блоков: [M4.6c](docs/m4-6c-block-size_ru.md).
 
 ## Видение
 
