@@ -14,7 +14,7 @@ import miningsim.world.World;
 
 /** Single-owner grid blocks. World STONE is the block's cellular representation, not extra matter. */
 public final class FixedBlockWorld {
-    public static final int BLOCK_SIZE=8;
+    public static final int DEFAULT_BLOCK_SIZE=8;
     /** Number of unsupported fixed ticks spent stationary before a new fall. */
     public static final int FALL_DELAY_TICKS=8;
     public static final int WATER_SEARCH_RADIUS=32;
@@ -33,19 +33,24 @@ public final class FixedBlockWorld {
         Block snapshot() { return new Block(id,x,y,state,substance); }
     }
     private final World world;
+    private final int rockBlockSizeCells;
     private final int yOffset;
     private final Map<Long,Entry> byCell=new HashMap<>();
     private long nextId=1,rejected,updateNanos,ticks,obstructed;
     private int waterAttempts,moved,maxVisits,maxChecks;
-    public FixedBlockWorld(World world) {
+    public FixedBlockWorld(World world) { this(world,DEFAULT_BLOCK_SIZE); }
+    public FixedBlockWorld(World world,int rockBlockSizeCells) {
         this.world=java.util.Objects.requireNonNull(world);
+        if(rockBlockSizeCells!=4 && rockBlockSizeCells!=8) throw new IllegalArgumentException("Rock block size must be 4 or 8");
+        this.rockBlockSizeCells=rockBlockSizeCells;
         if(world.mode()!=World.Mode.BEDROCK_ENABLED || world.hasChangeSink()) throw new IllegalArgumentException("Fixed blocks require an independent bedrock world");
-        yOffset=Math.floorMod(world.height()-1,BLOCK_SIZE);
+        yOffset=Math.floorMod(world.height()-1,rockBlockSizeCells);
     }
+    public int rockBlockSizeCells() { return rockBlockSizeCells; }
     public int yOffset() { return yOffset; }
     private long key(int x,int y) { return (long)y*world.width()+x; }
-    public int snapX(int x) { return Math.floorDiv(x,BLOCK_SIZE)*BLOCK_SIZE; }
-    public int snapY(int y) { return Math.floorDiv(y-yOffset,BLOCK_SIZE)*BLOCK_SIZE+yOffset; }
+    public int snapX(int x) { return Math.floorDiv(x,rockBlockSizeCells)*rockBlockSizeCells; }
+    public int snapY(int y) { return Math.floorDiv(y-yOffset,rockBlockSizeCells)*rockBlockSizeCells+yOffset; }
     public int size() { return byCell.size(); }
     public long rejected() { return rejected; }
     public long updateNanos() { return updateNanos; }
@@ -55,38 +60,38 @@ public final class FixedBlockWorld {
     public List<BlockDiagnostic> diagnostics() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(e->new BlockDiagnostic(e.id,e.reason,e.visits,e.checks)).toList(); }
     public List<Block> blocks() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(Entry::snapshot).toList(); }
     public Block blockAt(int x,int y) { if(!world.contains(x,y)) return null; var e=byCell.get(key(snapX(x),snapY(y))); return e==null?null:e.snapshot(); }
-    private boolean validArea(int x,int y) { return x>=0 && y>=0 && x<=world.width()-BLOCK_SIZE && y<=world.height()-BLOCK_SIZE; }
+    private boolean validArea(int x,int y) { return x>=0 && y>=0 && x<=world.width()-rockBlockSizeCells && y<=world.height()-rockBlockSizeCells; }
     private boolean empty(int x,int y) {
         if(!validArea(x,y)) return false;
-        for(int dy=0;dy<BLOCK_SIZE;dy++) for(int dx=0;dx<BLOCK_SIZE;dx++) if(world.get(x+dx,y+dy)!=Material.AIR) return false;
+        for(int dy=0;dy<rockBlockSizeCells;dy++) for(int dx=0;dx<rockBlockSizeCells;dx++) if(world.get(x+dx,y+dy)!=Material.AIR) return false;
         return true;
     }
     private void append(List<World.CellChange> changes,int x,int y,Material from,Material to) {
-        for(int dy=0;dy<BLOCK_SIZE;dy++) for(int dx=0;dx<BLOCK_SIZE;dx++) changes.add(new World.CellChange(x+dx,y+dy,from,to));
+        for(int dy=0;dy<rockBlockSizeCells;dy++) for(int dx=0;dx<rockBlockSizeCells;dx++) changes.add(new World.CellChange(x+dx,y+dy,from,to));
     }
     public boolean place(int x,int y,boolean pinned) {
         if(!world.contains(x,y)) { rejected++; return false; }
         x=snapX(x); y=snapY(y); if(byCell.containsKey(key(x,y))) return false;
         if(!empty(x,y)) { rejected++; return false; }
         long id=nextId,next=Math.incrementExact(nextId);
-        var changes=new ArrayList<World.CellChange>(64); append(changes,x,y,Material.AIR,Material.STONE);
+        var changes=new ArrayList<World.CellChange>(rockBlockSizeCells*rockBlockSizeCells); append(changes,x,y,Material.AIR,Material.STONE);
         if(world.replaceAllIfMatches(changes)!=World.BatchResult.CHANGED) { rejected++; return false; }
         byCell.put(key(x,y),new Entry(id,x,y,pinned)); nextId=next; return true;
     }
     public boolean removeAt(int x,int y) {
         if(!world.contains(x,y)) return false;
         var e=byCell.get(key(snapX(x),snapY(y))); if(e==null) return false;
-        var changes=new ArrayList<World.CellChange>(64); append(changes,e.x,e.y,Material.STONE,Material.AIR);
+        var changes=new ArrayList<World.CellChange>(rockBlockSizeCells*rockBlockSizeCells); append(changes,e.x,e.y,Material.STONE,Material.AIR);
         if(world.replaceAllIfMatches(changes)!=World.BatchResult.CHANGED) throw new IllegalStateException("Block ownership mismatch");
         byCell.remove(key(e.x,e.y)); return true;
     }
     public void releaseStroke() { for(var e:byCell.values()) e.pinned=false; }
     private record SearchCell(int x,int y,int distance) { }
     private static final class Work { int visits,checks; boolean exceeded; }
-    private boolean within(int x,int y,int left,int top) { return x>=left && x<left+BLOCK_SIZE && y>=top && y<top+BLOCK_SIZE; }
+    private boolean within(int x,int y,int left,int top) { return x>=left && x<left+rockBlockSizeCells && y>=top && y<top+rockBlockSizeCells; }
     /** Bounded vertical vent through water and aligned, movable blocks above this block. */
     private boolean hasVerticalVent(Entry block,Work work) {
-        for(int dx=0;dx<BLOCK_SIZE;dx++) for(int distance=1;distance<=WATER_VENT_MAX_DISTANCE;distance++) {
+        for(int dx=0;dx<rockBlockSizeCells;dx++) for(int distance=1;distance<=WATER_VENT_MAX_DISTANCE;distance++) {
             int x=block.x+dx,y=block.y-distance; if(y<0) break;
             if(work.checks>=WATER_MAX_CHECKS) { work.exceeded=true; return false; } work.checks++;
             var material=world.get(x,y);
@@ -114,7 +119,7 @@ public final class FixedBlockWorld {
                 if(work.checks>=WATER_MAX_CHECKS) { work.exceeded=true; return null; } work.checks++;
                 int nx=current.x()+d[0],ny=current.y()+d[1];
                 if(!world.contains(nx,ny) || !seen.add(key(nx,ny))) continue;
-                boolean destination=within(nx,ny,block.x,block.y+BLOCK_SIZE);
+                boolean destination=within(nx,ny,block.x,block.y+rockBlockSizeCells);
                 boolean vacated=within(nx,ny,block.x,block.y);
                 var material=world.get(nx,ny);
                 if(material!=Material.AIR && material!=Material.WATER && !(vacated && material==Material.STONE)) continue;
@@ -134,9 +139,9 @@ public final class FixedBlockWorld {
         if(!validArea(e.x,nextY)) { e.reason=Reason.SUPPORTED_BY_SOLID; return MoveResult.SUPPORTED; }
         if(world.hasChangeSink()) { e.reason=Reason.INVALID_OR_STALE_PLAN; return MoveResult.OBSTRUCTED; }
         var water=new ArrayList<SearchCell>();
-        for(int dy=0;dy<BLOCK_SIZE;dy++) for(int dx=0;dx<BLOCK_SIZE;dx++)
+        for(int dy=0;dy<rockBlockSizeCells;dy++) for(int dx=0;dx<rockBlockSizeCells;dx++)
             if(world.get(e.x+dx,e.y+dy)!=Material.STONE) { e.reason=Reason.INVALID_OR_STALE_PLAN; throw new IllegalStateException("Block ownership mismatch for "+e.id); }
-        for(int dy=0;dy<BLOCK_SIZE;dy++) for(int dx=0;dx<BLOCK_SIZE;dx++) {
+        for(int dy=0;dy<rockBlockSizeCells;dy++) for(int dx=0;dx<rockBlockSizeCells;dx++) {
             var material=world.get(e.x+dx,nextY+dy);
             if(material==Material.WATER) water.add(new SearchCell(e.x+dx,nextY+dy,0));
             else if(material!=Material.AIR) {
@@ -155,8 +160,8 @@ public final class FixedBlockWorld {
         maxVisits=Math.max(maxVisits,work.visits); maxChecks=Math.max(maxChecks,work.checks);
         if(destinations==null) { e.reason=work.exceeded?Reason.WATER_SEARCH_BUDGET_EXCEEDED:Reason.WATER_DISPLACEMENT_BLOCKED; return MoveResult.OBSTRUCTED; }
         var reserved=new HashSet<Long>(); for(var target:destinations) reserved.add(key(target.x(),target.y()));
-        var changes=new ArrayList<World.CellChange>(128+destinations.size());
-        for(int dy=0;dy<BLOCK_SIZE;dy++) for(int dx=0;dx<BLOCK_SIZE;dx++) {
+        var changes=new ArrayList<World.CellChange>(2*rockBlockSizeCells*rockBlockSizeCells+destinations.size());
+        for(int dy=0;dy<rockBlockSizeCells;dy++) for(int dx=0;dx<rockBlockSizeCells;dx++) {
             int x=e.x+dx,y=e.y+dy;
             changes.add(new World.CellChange(x,y,Material.STONE,reserved.contains(key(x,y))?Material.WATER:Material.AIR));
             changes.add(new World.CellChange(x,nextY+dy,world.get(x,nextY+dy),Material.STONE));
@@ -168,7 +173,7 @@ public final class FixedBlockWorld {
     }
     private boolean hasSolidObstacle(int x,int y) {
         if(!validArea(x,y)) return true;
-        for(int dy=0;dy<BLOCK_SIZE;dy++) for(int dx=0;dx<BLOCK_SIZE;dx++) {
+        for(int dy=0;dy<rockBlockSizeCells;dy++) for(int dx=0;dx<rockBlockSizeCells;dx++) {
             var material=world.get(x+dx,y+dy);
             if(material!=Material.AIR && material!=Material.WATER) return true;
         }
@@ -180,7 +185,7 @@ public final class FixedBlockWorld {
         var ordered=new ArrayList<>(byCell.values()); ordered.sort(Comparator.<Entry>comparingInt(e->e.y).reversed().thenComparingLong(e->e.id));
         for(var e:ordered) {
             if(e.pinned) { e.state=State.STATIC; e.reason=Reason.PINNED; e.visits=e.checks=e.unsupportedTicks=0; continue; }
-            int nextY=e.y+BLOCK_SIZE;
+            int nextY=e.y+rockBlockSizeCells;
             if(e.state==State.STATIC && !hasSolidObstacle(e.x,nextY) && e.unsupportedTicks<FALL_DELAY_TICKS) {
                 e.unsupportedTicks++; e.reason=Reason.WAITING_FOR_FALL; e.visits=e.checks=0; continue;
             }

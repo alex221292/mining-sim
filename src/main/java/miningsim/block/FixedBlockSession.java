@@ -12,7 +12,8 @@ public final class FixedBlockSession {
     private final Simulation simulation;
     private final ArrayDeque<Runnable> commands=new ArrayDeque<>();
     private long cellularTicks;
-    public FixedBlockSession(World world,long seed) { this.world=world; blocks=new FixedBlockWorld(world); simulation=new Simulation(world,seed); }
+    public FixedBlockSession(World world,long seed) { this(world,seed,FixedBlockWorld.DEFAULT_BLOCK_SIZE); }
+    public FixedBlockSession(World world,long seed,int rockBlockSizeCells) { this.world=world; blocks=new FixedBlockWorld(world,rockBlockSizeCells); simulation=new Simulation(world,seed); }
     public World world() { return world; }
     public FixedBlockWorld blocks() { return blocks; }
     public long cellularTicks() { return cellularTicks; }
@@ -22,7 +23,8 @@ public final class FixedBlockSession {
     public void blockStroke(int x0,int y0,int x1,int y1,boolean erase) {
         if(!world.contains(x0,y0) || !world.contains(x1,y1)) return;
         int x=blocks.snapX(x0),y=blocks.snapY(y0),endX=blocks.snapX(x1),endY=blocks.snapY(y1);
-        int dx=Math.abs(endX-x)/8,dy=Math.abs(endY-y)/8,sx=x<endX?8:-8,sy=y<endY?8:-8,error=dx-dy;
+        int size=blocks.rockBlockSizeCells();
+        int dx=Math.abs(endX-x)/size,dy=Math.abs(endY-y)/size,sx=x<endX?size:-size,sy=y<endY?size:-size,error=dx-dy;
         while(true) {
             if(erase) blocks.removeAt(x,y); else blocks.place(x,y,true);
             if(x==endX && y==endY) break;

@@ -60,6 +60,7 @@ public final class Main {
         private World world = new World(400, 300, World.Mode.BEDROCK_ENABLED);
         private InteractiveSession session;
         private FixedBlockSession fixed = new FixedBlockSession(world,12345);
+        private int rockBlockSizeCells = miningsim.block.FixedBlockWorld.DEFAULT_BLOCK_SIZE;
         private SimulationControl control = new SimulationControl(fixed::tick);
         private Renderer renderer = new Java2DRenderer(world.width(), world.height());
         private final Camera2D camera = new Camera2D();
@@ -134,6 +135,7 @@ public final class Main {
                         case KeyEvent.VK_F5 -> { if (session!=null && session.isCoupled()) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
                         case KeyEvent.VK_C -> resetWorld();
                         case KeyEvent.VK_F6 -> { if(session!=null) session.resume(); }
+                        case KeyEvent.VK_F7 -> switchRockBlockSize();
                         case KeyEvent.VK_LEFT -> panLeft = true;
                         case KeyEvent.VK_RIGHT -> panRight = true;
                         case KeyEvent.VK_UP -> panUp = true;
@@ -183,7 +185,7 @@ public final class Main {
                     World loaded = WorldIO.read(path);
                     for(int y=0;y<loaded.height();y++) for(int x=0;x<loaded.width();x++) if(loaded.get(x,y)==Material.STONE) throw new IOException("World contains legacy STONE; fixed-block import is not supported.");
                     if(loaded.mode()!=World.Mode.BEDROCK_ENABLED) throw new IOException("Fixed-block sandbox requires a bedrock world.");
-                    var nextFixed=new FixedBlockSession(loaded,12345);
+                    var nextFixed=new FixedBlockSession(loaded,12345,rockBlockSizeCells);
                     SimulationControl nextControl = new SimulationControl(nextFixed::tick);
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
@@ -202,11 +204,21 @@ public final class Main {
         private void resetWorld() {
             boolean paused=control.paused();
             var nextWorld=new World(world.width(),world.height(),World.Mode.BEDROCK_ENABLED);
-            var nextFixed=new FixedBlockSession(nextWorld,12345); var nextControl=new SimulationControl(nextFixed::tick);
+            var nextFixed=new FixedBlockSession(nextWorld,12345,rockBlockSizeCells); var nextControl=new SimulationControl(nextFixed::tick);
             var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
             if(paused) nextControl.togglePause();
             if(session!=null) session.retire(); world=nextWorld; structural=null; session=null; fixed=nextFixed; control=nextControl; renderer=nextRenderer;
-            sceneIndex=-1; sceneName="";
+            sceneIndex=-1; sceneName=""; left=right=strokeStarted=false;
+        }
+
+        private void switchRockBlockSize() {
+            timer.stop();
+            try {
+                int next=rockBlockSizeCells==8?4:8;
+                if(JOptionPane.showConfirmDialog(this,"Switch to "+next+"x"+next+" blocks? The current scene will be erased.",
+                        "Replace scene",JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.YES_OPTION) return;
+                rockBlockSizeCells=next; resetWorld();
+            } finally { previous=System.nanoTime(); accumulator=0; timer.start(); requestFocusInWindow(); repaint(); }
         }
 
         private void chooseReferenceScene() {
@@ -290,7 +302,7 @@ public final class Main {
                 g.setColor(new Color(0x45515d));
                 for(var block:fixed.blocks().blocks()) {
                     int x=(int)Math.round(camera.worldToScreenX(block.x())),y=(int)Math.round(camera.worldToScreenY(block.y()));
-                    int size=(int)Math.round(8*camera.zoom());
+                    int size=(int)Math.round(fixed.blocks().rockBlockSizeCells()*camera.zoom());
                     if(x<getWidth() && y<getHeight() && x+size>0 && y+size>0) g.drawRect(x,y,size,size);
                 }
             }
@@ -302,7 +314,7 @@ public final class Main {
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             String runState=session!=null && session.blocked()?"BLOCKED":control.paused()?"PAUSED":session!=null && session.failure()!=null?"RETRYING":"RUNNING";
-            g.drawString("Brush: " + brush + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
+            g.drawString("Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells+(rockBlockSizeCells==4?" EXPERIMENTAL":""):"") + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
@@ -311,7 +323,7 @@ public final class Main {
                 g.drawString(reason+" | F6 retry",8,67);
             } else g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString(fixed!=null?"Fixed blocks: save unavailable | Ctrl+O: load":"Ctrl+S: save | Ctrl+O: load", 8, 84);
-            g.drawString(fixed!=null?"F3: diagnostics | F4: reference scene":"F3: diagnostics | F4: scene | F5: extract | F6: retry | Middle click: select",8,101);
+            g.drawString(fixed!=null?"F3: diagnostics | F4: reference scene | F7: block size (clears scene)":"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: block size",8,101);
             if (diagnostics) {
                 if(fixed!=null) {
                     var b=fixed.blocks(); var list=b.blocks(); long falling=list.stream().filter(v->v.state()==miningsim.block.FixedBlockWorld.State.FALLING).count();
