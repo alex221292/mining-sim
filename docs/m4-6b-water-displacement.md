@@ -1,5 +1,7 @@
 # M4.6b — fixed blocks and water
 
+Historical description; see [M4.6b.1](m4-6b1-open-pool.md) for the current virtual-vacancy rule.
+
 The fixed-block sandbox now moves through WATER. A block still advances one aligned 8-cell step per tick; SAND, GRAVEL, SOIL, WOOD, STONE and BEDROCK remain obstacles. For each destination, the block performs one deterministic multi-source breadth-first search from the newly occupied WATER cells. Neighbours are visited left, right, up, down. Only reachable AIR outside the destination is reserved, with no duplicate reservation. Existing source-block cells are not treated as free capacity until after the move. Search limits are radius **32 cells**, **8192 visited cells** and **32768 neighbour checks per block per tick**. Exhaustion or insufficient capacity yields local `OBSTRUCTED`; the block and water stay unchanged and other blocks and cellular simulation continue.
 
 The entire source, destination and reserved AIR-to-WATER delta is prevalidated and published by one World batch. Fixed-block worlds require no change listener; if one is attached later, movement is refused before publication, so callbacks cannot observe a World/registry intermediate state. An ownership mismatch is an invariant failure, not a water obstruction. Water moves through the ordinary cellular simulation after the block phase. No water is intentionally created or deleted. F3 continues to show block and cellular diagnostics. Saving fixed-block worlds remains unavailable; the format is unchanged.

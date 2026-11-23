@@ -25,9 +25,14 @@ public final class WaterDisplacementBenchmark {
         measure(10,true,runs);
     }
     private static void measure(int count,boolean sealed,int runs) {
-        long[] samples=new long[runs]; long rejected=0;
-        for(int i=-2;i<runs;i++) { var scene=scene(count,sealed); scene.step(); if(i>=0) { samples[i]=scene.updateNanos(); rejected+=scene.obstructed(); } }
+        long[] samples=new long[runs]; long rejected=0,attempts=0,moves=0; int maxVisits=0,maxChecks=0;
+        var reasons=new java.util.EnumMap<FixedBlockWorld.Reason,Long>(FixedBlockWorld.Reason.class);
+        for(int i=-2;i<runs;i++) { var scene=scene(count,sealed); scene.step(); if(i>=0) {
+            samples[i]=scene.updateNanos(); rejected+=scene.obstructed(); var d=scene.tickDiagnostics(); attempts+=d.waterAttempts(); moves+=d.moved();
+            maxVisits=Math.max(maxVisits,d.maxVisits()); maxChecks=Math.max(maxChecks,d.maxChecks());
+            for(var block:scene.diagnostics()) if(block.reason()!=FixedBlockWorld.Reason.NONE) reasons.merge(block.reason(),1L,Long::sum);
+        } }
         Arrays.sort(samples);
-        System.out.printf(Locale.ROOT,"%s blocks=%d mean=%.3fms p95=%.3fms obstructed=%d%n",sealed?"sealed":"pool",count,Arrays.stream(samples).average().orElseThrow()/1e6,samples[(int)Math.ceil(runs*.95)-1]/1e6,rejected);
+        System.out.printf(Locale.ROOT,"%s blocks=%d mean=%.3fms p95=%.3fms obstructed=%d waterAttempts=%d moved=%d maxVisits=%d maxChecks=%d reasons=%s%n",sealed?"sealed":"pool",count,Arrays.stream(samples).average().orElseThrow()/1e6,samples[(int)Math.ceil(runs*.95)-1]/1e6,rejected,attempts,moves,maxVisits,maxChecks,reasons);
     }
 }

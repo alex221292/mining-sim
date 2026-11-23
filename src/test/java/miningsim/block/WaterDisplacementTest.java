@@ -45,6 +45,7 @@ class WaterDisplacementTest {
         var state=t.blocks().blocks(); long rev=other.mutationRevision();
         other.setChangeSink(new World.ChangeSink() { public void changed(int x,int y,byte from,byte to) { fail("callback must not run"); } public void invalidated() { } });
         t.blocks().step(); assertEquals(state,t.blocks().blocks()); assertEquals(rev,other.mutationRevision()); assertEquals(1,t.blocks().obstructed());
+        assertEquals(FixedBlockWorld.Reason.INVALID_OR_STALE_PLAN,t.blocks().diagnostics().getFirst().reason());
     }
     @Test void competingBlocksResolveInStableOrder() {
         var a=new FixedBlockSession(new World(48,65,World.Mode.BEDROCK_ENABLED),29);

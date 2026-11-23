@@ -69,6 +69,7 @@ public final class Main {
         private int frames, ticks, fps, tps;
         private boolean left, right;
         private int strokeX,strokeY; private boolean strokeStarted;
+        private int hoverX=-1,hoverY=-1;
         private boolean panLeft, panRight, panUp, panDown;
         private StructuralSimulationController structural;
         private boolean diagnostics;
@@ -97,6 +98,7 @@ public final class Main {
                     if(fixed!=null) { var target=fixed; target.enqueue(()->target.blocks().releaseStroke()); strokeStarted=false; }
                 }
                 @Override public void mouseDragged(MouseEvent e) { paintAt(e); }
+                @Override public void mouseMoved(MouseEvent e) { hoverX=(int)Math.floor(camera.screenToWorldX(e.getX())); hoverY=(int)Math.floor(camera.screenToWorldY(e.getY())); }
                 @Override public void mouseWheelMoved(MouseWheelEvent e) {
                     requestFocusInWindow();
                     camera.zoomAt(camera.zoom() * Math.pow(1.2, -e.getPreciseWheelRotation()), e.getX(), e.getY());
@@ -245,6 +247,7 @@ public final class Main {
         private void paintAt(MouseEvent e) {
             if (getWidth() <= 0 || getHeight() <= 0 || (!left && !right)) return;
             double x=camera.screenToWorldX(e.getX()),y=camera.screenToWorldY(e.getY());
+            hoverX=(int)Math.floor(x); hoverY=(int)Math.floor(y);
             if(fixed!=null) {
                 int ix=(int)Math.floor(x),iy=(int)Math.floor(y); if(!world.contains(ix,iy)) { strokeStarted=false; return; }
                 var target=fixed; var material=right?Material.AIR:brush;
@@ -314,6 +317,10 @@ public final class Main {
                     var b=fixed.blocks(); var list=b.blocks(); long falling=list.stream().filter(v->v.state()==miningsim.block.FixedBlockWorld.State.FALLING).count();
                     g.drawString("Rock mode: FIXED_BLOCK | blocks "+list.size()+" | STATIC "+(list.size()-falling)+" | FALLING "+falling,8,118);
                     g.drawString(String.format(Locale.ROOT,"Block update %.3f ms | rejected %d | cellular ticks %d",b.updateNanos()/1e6,b.rejected(),fixed.cellularTicks()),8,135);
+                    var blocked=b.diagnostics().stream().filter(d->d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_DISPLACEMENT_BLOCKED || d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_SEARCH_BUDGET_EXCEEDED || d.reason()==miningsim.block.FixedBlockWorld.Reason.BLOCKED_BY_STONE || d.reason()==miningsim.block.FixedBlockWorld.Reason.INVALID_OR_STALE_PLAN).findFirst();
+                    if(blocked.isPresent()) { var d=blocked.get(); g.drawString("Block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,152); }
+                    var hovered=b.blockAt(hoverX,hoverY);
+                    if(hovered!=null) b.diagnostics().stream().filter(d->d.id()==hovered.id()).findFirst().ifPresent(d->g.drawString("Cursor block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,169));
                 } else {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {
