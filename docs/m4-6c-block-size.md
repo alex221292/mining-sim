@@ -4,7 +4,20 @@ Each fixed-block session has one immutable `rockBlockSizeCells`: **8** by defaul
 
 Both sizes use the same owner-thread phases, grid snapping, bottom-anchored `yOffset=(height-1) mod size`, atomic World batches, eight-tick fall delay and water displacement planner. Movement is one block size per tick. BFS remains radius 32, 8192 visits and 32768 checks; the vertical vent remains bounded to 128 cells per column. A 4×4 move displaces at most 16 WATER cells rather than 64; the work limits are unchanged, not scaled. SAND, GRAVEL, SOIL and other non-water material remain obstacles. Partially fitting edge strips cannot hold a block.
 
-Parameterized headless tests cover both sizes, strokes, pan/zoom coordinate conversion, deletion, support loss and restoration, five blocks in deep water, overflow, closed and reopened basins, local rollback, granular materials, chunk and world boundaries, replay and 10,000 ticks per size. Existing 8×8 tests are retained and the default/explicit 8×8 replay is compared. M4.6b.2 manual acceptance was reported as 4/4 by the user. **M4.6c has not yet been manually accepted.**
+Parameterized headless tests cover both sizes, strokes, pan/zoom coordinate conversion, deletion, support loss and restoration, five blocks in deep water, overflow, closed and reopened basins, local rollback, granular materials, chunk and world boundaries, replay and 10,000 ticks per size. Existing 8×8 tests are retained and the default/explicit 8×8 replay is compared. M4.6b.2 manual acceptance was reported as 4/4 by the user.
+
+## M4.6c manual acceptance
+
+The user reported **PASS (user-verified)** in Swing for all six scenarios:
+
+1. Horizontal, diagonal and vertical constructions with 4×4 blocks.
+2. Individual block removal, loss of support and fall delay.
+3. Multiple blocks entering a pool, water displacement and overflow.
+4. Stone, sand and water together, including painting and erasing during simulation.
+5. Camera, zoom, pause and single physics step.
+6. Switching back to 8×8 with no regressions observed.
+
+Automated tests and benchmarks are separate evidence, not part of this manual check. Experimental 4×4 is not the default; 8×8 remains the default. Production stability across all possible scenes has not been established.
 
 ## Measurements
 
