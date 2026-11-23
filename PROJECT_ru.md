@@ -6,6 +6,7 @@
 Реактивация стопок и проверка нагрузок: [M4.5b.4c.1](docs/m4-5b4c1-stack-fix_ru.md).
 Реактивация разъединённых settled-компонент: [M4.5b.4c.2](docs/m4-5b4c2-component-reactivation_ru.md).
 Песочница с фиксированными блоками: [M4.6a](docs/m4-6a-fixed-block-rock_ru.md).
+Вытеснение воды фиксированными блоками: [M4.6b](docs/m4-6b-water-displacement_ru.md).
 
 ## Видение
 

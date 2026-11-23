@@ -1,0 +1,13 @@
+# M4.6b — fixed blocks and water
+
+The fixed-block sandbox now moves through WATER. A block still advances one aligned 8-cell step per tick; SAND, GRAVEL, SOIL, WOOD, STONE and BEDROCK remain obstacles. For each destination, the block performs one deterministic multi-source breadth-first search from the newly occupied WATER cells. Neighbours are visited left, right, up, down. Only reachable AIR outside the destination is reserved, with no duplicate reservation. Existing source-block cells are not treated as free capacity until after the move. Search limits are radius **32 cells**, **8192 visited cells** and **32768 neighbour checks per block per tick**. Exhaustion or insufficient capacity yields local `OBSTRUCTED`; the block and water stay unchanged and other blocks and cellular simulation continue.
+
+The entire source, destination and reserved AIR-to-WATER delta is prevalidated and published by one World batch. Fixed-block worlds require no change listener; if one is attached later, movement is refused before publication, so callbacks cannot observe a World/registry intermediate state. An ownership mismatch is an invariant failure, not a water obstruction. Water moves through the ordinary cellular simulation after the block phase. No water is intentionally created or deleted. F3 continues to show block and cellular diagnostics. Saving fixed-block worlds remains unavailable; the format is unchanged.
+
+Headless coverage includes shallow/deep pools, simultaneous blocks and a wall, sealed volume, refusal with a change listener, independent block progress, removal and water filling, mixed sand/water, replay and two 10,000-tick seeded runs. The tests and benchmark do not replace manual Swing acceptance.
+
+## Measurements
+
+Windows, OpenJDK 25.0.5+8-LTS, OpenJDK 64-Bit Server VM. Static `FixedBlockBenchmark 100`: dense 800×401, 20 warmup and 100 measured ticks, excluding initialization, cellular simulation and rendering. Mean/p95: 100 **0.038/0.065 ms**, 1000 **0.227/0.367 ms**, 5000 **0.985/1.089 ms**. The M4.6a baseline was **0.037/0.069**, **0.139/0.166**, **0.586/0.672 ms** respectively; the larger static scenes regressed, including the new source-ownership check. This is not a whole-frame measurement.
+
+`WaterDisplacementBenchmark 10`: fresh height-65 pools, 2 warmups and 10 independent measured one-step scenes; mean/p95 block update: 10 blocks **2.081/3.119 ms**, 50 blocks **2.755/4.305 ms**, and 10 blocks in a sealed pool **2.120/4.070 ms**. The open-pool fixtures had zero obstructions; the sealed fixture had 100 across the 10 measured runs. Pool widths are respectively 160 and 800 cells; these timings exclude fixture setup, cellular work and repaint.

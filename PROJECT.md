@@ -6,6 +6,7 @@ Prospective settled-rock assembly support: [M4.5b.4c](docs/m4-5b4c-prospective-s
 Stack reactivation and support-load validation: [M4.5b.4c.1](docs/m4-5b4c1-stack-fix.md).
 Disconnected settled-component reactivation: [M4.5b.4c.2](docs/m4-5b4c2-component-reactivation.md).
 Fixed-block sandbox: [M4.6a](docs/m4-6a-fixed-block-rock.md).
+Fixed blocks displacing water: [M4.6b](docs/m4-6b-water-displacement.md).
 
 ## Vision
 
