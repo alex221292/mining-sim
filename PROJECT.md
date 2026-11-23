@@ -5,6 +5,7 @@ Swing lifecycle integration and pending manual acceptance: [M4.5b.4b](docs/m4-5b
 Prospective settled-rock assembly support: [M4.5b.4c](docs/m4-5b4c-prospective-support.md).
 Stack reactivation and support-load validation: [M4.5b.4c.1](docs/m4-5b4c1-stack-fix.md).
 Disconnected settled-component reactivation: [M4.5b.4c.2](docs/m4-5b4c2-component-reactivation.md).
+Fixed-block sandbox: [M4.6a](docs/m4-6a-fixed-block-rock.md).
 
 ## Vision
 
