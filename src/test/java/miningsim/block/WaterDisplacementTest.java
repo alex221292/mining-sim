@@ -17,7 +17,7 @@ class WaterDisplacementTest {
         for(int top:List.of(48,32)) {
             var w=new World(48,65,World.Mode.BEDROCK_ENABLED); var s=new FixedBlockSession(w,17); pool(w,top,64);
             assertTrue(s.blocks().place(8,8,false)); int water=count(w,Material.WATER); int moved=0;
-            for(int i=0;i<12;i++) { int previous=s.blocks().blocks().getFirst().y(); s.blocks().step(); if(s.blocks().blocks().getFirst().y()>previous) moved++;
+            for(int i=0;i<24;i++) { int previous=s.blocks().blocks().getFirst().y(); s.blocks().step(); if(s.blocks().blocks().getFirst().y()>previous) moved++;
                 assertEquals(water,count(w,Material.WATER)); assertOwnership(s); }
             assertEquals(56,s.blocks().blocks().getFirst().y()); assertTrue(moved>=6);
         }
@@ -38,13 +38,13 @@ class WaterDisplacementTest {
         for(int x=0;x<=24;x++) w.set(x,23,Material.WOOD);
         for(int y=24;y<32;y++) for(int x=8;x<16;x++) w.set(x,y,Material.AIR);
         assertTrue(s.blocks().place(8,24,false)); int water=count(w,Material.WATER); var before=s.blocks().blocks(); long revision=w.mutationRevision();
-        s.blocks().step(); assertEquals(before,s.blocks().blocks()); assertEquals(revision,w.mutationRevision()); assertEquals(water,count(w,Material.WATER)); assertTrue(s.blocks().obstructed()>0);
-        assertTrue(s.blocks().place(32,8,false)); s.blocks().step();
+        for(int i=0;i<=FixedBlockWorld.FALL_DELAY_TICKS;i++) s.blocks().step(); assertEquals(before,s.blocks().blocks()); assertEquals(revision,w.mutationRevision()); assertEquals(water,count(w,Material.WATER)); assertTrue(s.blocks().obstructed()>0);
+        assertTrue(s.blocks().place(32,8,false)); for(int i=0;i<=FixedBlockWorld.FALL_DELAY_TICKS;i++) s.blocks().step();
         assertEquals(24,s.blocks().blockAt(8,24).y()); assertEquals(16,s.blocks().blockAt(32,16).y()); assertEquals(water,count(w,Material.WATER));
         var other=new World(48,65,World.Mode.BEDROCK_ENABLED); var t=new FixedBlockSession(other,20); assertTrue(t.blocks().place(8,8,false));
         var state=t.blocks().blocks(); long rev=other.mutationRevision();
         other.setChangeSink(new World.ChangeSink() { public void changed(int x,int y,byte from,byte to) { fail("callback must not run"); } public void invalidated() { } });
-        t.blocks().step(); assertEquals(state,t.blocks().blocks()); assertEquals(rev,other.mutationRevision()); assertEquals(1,t.blocks().obstructed());
+        for(int i=0;i<=FixedBlockWorld.FALL_DELAY_TICKS;i++) t.blocks().step(); assertEquals(state,t.blocks().blocks()); assertEquals(rev,other.mutationRevision()); assertEquals(1,t.blocks().obstructed());
         assertEquals(FixedBlockWorld.Reason.INVALID_OR_STALE_PLAN,t.blocks().diagnostics().getFirst().reason());
     }
     @Test void competingBlocksResolveInStableOrder() {

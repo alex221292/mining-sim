@@ -15,18 +15,20 @@ import miningsim.world.World;
 /** Single-owner grid blocks. World STONE is the block's cellular representation, not extra matter. */
 public final class FixedBlockWorld {
     public static final int BLOCK_SIZE=8;
+    /** Number of unsupported fixed ticks spent stationary before a new fall. */
+    public static final int FALL_DELAY_TICKS=8;
     public static final int WATER_SEARCH_RADIUS=32;
     public static final int WATER_MAX_VISITS=8192;
     public static final int WATER_MAX_CHECKS=32768;
     public static final int WATER_VENT_MAX_DISTANCE=128;
     public enum State { STATIC, FALLING }
     public enum MoveResult { MOVED, SUPPORTED, OBSTRUCTED }
-    public enum Reason { NONE, PINNED, SUPPORTED_BY_SOLID, BLOCKED_BY_STONE, WATER_DISPLACEMENT_BLOCKED, WATER_SEARCH_BUDGET_EXCEEDED, INVALID_OR_STALE_PLAN }
+    public enum Reason { NONE, PINNED, WAITING_FOR_FALL, SUPPORTED_BY_SOLID, BLOCKED_BY_STONE, WATER_DISPLACEMENT_BLOCKED, WATER_SEARCH_BUDGET_EXCEEDED, INVALID_OR_STALE_PLAN }
     public record BlockDiagnostic(long id,Reason reason,int visits,int checks) { }
     public record TickDiagnostics(int waterAttempts,int moved,int maxVisits,int maxChecks) { }
     public record Block(long id,int x,int y,State state,SubstanceId substance) { }
     private static final class Entry {
-        final long id; final SubstanceId substance; int x,y; State state=State.STATIC; boolean pinned; Reason reason=Reason.NONE; int visits,checks;
+        final long id; final SubstanceId substance; int x,y; State state=State.STATIC; boolean pinned; Reason reason=Reason.NONE; int visits,checks,unsupportedTicks;
         Entry(long id,int x,int y,boolean pinned) { this.id=id; this.x=x; this.y=y; this.pinned=pinned; substance=SubstanceRegistry.STONE; }
         Block snapshot() { return new Block(id,x,y,state,substance); }
     }
@@ -164,17 +166,28 @@ public final class FixedBlockWorld {
         byCell.remove(key(e.x,e.y)); e.y=nextY; e.state=State.FALLING; byCell.put(key(e.x,e.y),e);
         return MoveResult.MOVED;
     }
+    private boolean hasSolidObstacle(int x,int y) {
+        if(!validArea(x,y)) return true;
+        for(int dy=0;dy<BLOCK_SIZE;dy++) for(int dx=0;dx<BLOCK_SIZE;dx++) {
+            var material=world.get(x+dx,y+dy);
+            if(material!=Material.AIR && material!=Material.WATER) return true;
+        }
+        return false;
+    }
     /** One block-cell down per fixed tick, with bounded atomic water displacement. */
     public void step() {
         long start=System.nanoTime(); waterAttempts=moved=maxVisits=maxChecks=0;
         var ordered=new ArrayList<>(byCell.values()); ordered.sort(Comparator.<Entry>comparingInt(e->e.y).reversed().thenComparingLong(e->e.id));
         for(var e:ordered) {
-            if(e.pinned) { e.state=State.STATIC; e.reason=Reason.PINNED; e.visits=e.checks=0; continue; }
+            if(e.pinned) { e.state=State.STATIC; e.reason=Reason.PINNED; e.visits=e.checks=e.unsupportedTicks=0; continue; }
             int nextY=e.y+BLOCK_SIZE;
+            if(e.state==State.STATIC && !hasSolidObstacle(e.x,nextY) && e.unsupportedTicks<FALL_DELAY_TICKS) {
+                e.unsupportedTicks++; e.reason=Reason.WAITING_FOR_FALL; e.visits=e.checks=0; continue;
+            }
             var result=move(e,nextY);
-            if(result==MoveResult.MOVED) moved++;
+            if(result==MoveResult.MOVED) { moved++; e.unsupportedTicks=0; }
             if(result==MoveResult.OBSTRUCTED) obstructed++;
-            else if(result==MoveResult.SUPPORTED) e.state=State.STATIC;
+            else if(result==MoveResult.SUPPORTED) { e.state=State.STATIC; e.unsupportedTicks=0; }
         }
         ticks++; updateNanos=System.nanoTime()-start;
     }

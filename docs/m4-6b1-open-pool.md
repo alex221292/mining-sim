@@ -1,5 +1,7 @@
 # M4.6b.1 — open-pool obstruction
 
+For the later fall-delay contract, see [M4.6b.2](m4-6b2-stabilization.md).
+
 An 8-cell-wide water shaft between fixed block walls reproduced a false obstruction: the old search could not cross the falling block's currently occupied source volume, even though that volume is vacated by the same batch. With 32-cell search radius, a deep column can also put the free surface farther away. Increasing the existing BFS budgets alone cannot cross the source block.
 
 The deterministic planner now treats source cells as virtual vacancies and merges their STONE-to-WATER changes with the source batch; it never emits duplicate cell changes. Virtual vacancies are used only when AIR is reachable in the search or by a bounded vertical vent scan through WATER and aligned unpinned blocks. The vent scans at most 128 cells per column and shares the existing 32768-check budget. BFS retains its radius 32, 8192-visit and 32768-check limits. This is a discrete gameplay rule, not a hydrodynamic or pressure model; a sealed, completely filled container still obstructs the move. Limits and geometry can conservatively reject other open configurations. Bottom-first processing allows an unsupported stack to follow a moving lower block. SAND, GRAVEL and SOIL remain obstacles.

@@ -36,9 +36,9 @@ class FixedBlockSessionTest {
         var w=new World(40,81,World.Mode.BEDROCK_ENABLED); var s=new FixedBlockSession(w,1);
         for(int y:new int[]{72,64,56}) assertTrue(s.blocks().place(8,y,false));
         s.tick(); assertTrue(s.blocks().blocks().stream().allMatch(b->b.state()==FixedBlockWorld.State.STATIC));
-        assertTrue(s.blocks().removeAt(8,72)); s.tick();
-        assertEquals(2,s.blocks().size()); assertTrue(s.blocks().blocks().stream().allMatch(b->b.state()==FixedBlockWorld.State.FALLING));
-        s.tick(); assertTrue(s.blocks().blocks().stream().allMatch(b->b.state()==FixedBlockWorld.State.STATIC));
+        assertTrue(s.blocks().removeAt(8,72));
+        for(int i=0;i<40;i++) s.tick();
+        assertEquals(2,s.blocks().size()); assertTrue(s.blocks().blocks().stream().allMatch(b->b.state()==FixedBlockWorld.State.STATIC));
         assertNotNull(s.blocks().blockAt(8,72)); assertNotNull(s.blocks().blockAt(8,64));
         int stone=0; for(int y=0;y<w.height();y++) for(int x=0;x<w.width();x++) if(w.get(x,y)==Material.STONE) stone++;
         assertEquals(128,stone);

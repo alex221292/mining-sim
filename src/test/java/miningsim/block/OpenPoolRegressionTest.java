@@ -21,7 +21,7 @@ class OpenPoolRegressionTest {
         for(int y=0;y<=72;y+=8) { assertTrue(session.blocks().place(0,y,true)); assertTrue(session.blocks().place(16,y,true)); }
         for(int y=32;y<80;y++) for(int x=8;x<16;x++) world.set(x,y,Material.WATER);
         assertTrue(session.blocks().place(8,24,false)); long before=session.blocks().obstructed();
-        int water=water(world); session.blocks().step(); assertEquals(water,water(world));
+        int water=water(world); for(int i=0;i<=FixedBlockWorld.FALL_DELAY_TICKS;i++) session.blocks().step(); assertEquals(water,water(world));
         assertNotNull(session.blocks().blockAt(8,32),"open shaft with free air above: obstructed="+(session.blocks().obstructed()-before));
     }
     @Test void fiveSequentialBlocksReachSupportedStack() {
@@ -31,7 +31,7 @@ class OpenPoolRegressionTest {
         int water=water(w);
         for(int n=0;n<5;n++) {
             assertTrue(s.blocks().place(8,8,false));
-            for(int tick=0;tick<20;tick++) { s.blocks().step(); assertEquals(water,water(w)); }
+            for(int tick=0;tick<40;tick++) { s.blocks().step(); assertEquals(water,water(w)); }
             int expected=112-8*n; assertNotNull(s.blocks().blockAt(8,expected),"block "+n+" positions="+s.blocks().blocks()+" diagnostics="+s.blocks().diagnostics());
         }
         for(int y=80;y<=112;y+=8) {
@@ -39,13 +39,13 @@ class OpenPoolRegressionTest {
             assertEquals(FixedBlockWorld.Reason.SUPPORTED_BY_SOLID,d.reason());
         }
     }
-    @Test void stackMovesDownTogetherThroughWater() {
+    @Test void stackMovesDownThroughWaterWithPerBlockDelay() {
         var w=new World(24,81,World.Mode.BEDROCK_ENABLED); var s=new FixedBlockSession(w,6);
         for(int y=0;y<=72;y+=8) { assertTrue(s.blocks().place(0,y,true)); assertTrue(s.blocks().place(16,y,true)); }
         assertTrue(s.blocks().place(8,16,false)); assertTrue(s.blocks().place(8,24,false));
         for(int y=32;y<80;y++) for(int x=8;x<16;x++) w.set(x,y,Material.WATER);
-        int water=water(w); s.blocks().step();
-        assertNotNull(s.blocks().blockAt(8,32)); assertNotNull(s.blocks().blockAt(8,24)); assertEquals(water,water(w));
+        int water=water(w); for(int i=0;i<40;i++) s.blocks().step();
+        assertNotNull(s.blocks().blockAt(8,72)); assertNotNull(s.blocks().blockAt(8,64)); assertEquals(water,water(w));
     }
     @Test void removingLowerSupportLetsStackFallIntoWater() {
         var w=new World(24,81,World.Mode.BEDROCK_ENABLED); var s=new FixedBlockSession(w,9);
@@ -53,8 +53,8 @@ class OpenPoolRegressionTest {
         for(int y:new int[]{40,48,56}) assertTrue(s.blocks().place(8,y,false));
         for(int y=64;y<80;y++) for(int x=8;x<16;x++) w.set(x,y,Material.WATER);
         int water=water(w); assertTrue(s.blocks().removeAt(8,56));
-        s.blocks().step(); assertNotNull(s.blocks().blockAt(8,56)); assertNotNull(s.blocks().blockAt(8,48));
-        s.blocks().step(); assertNotNull(s.blocks().blockAt(8,64)); assertNotNull(s.blocks().blockAt(8,56)); assertEquals(water,water(w));
+        for(int i=0;i<40;i++) s.blocks().step();
+        assertNotNull(s.blocks().blockAt(8,72)); assertNotNull(s.blocks().blockAt(8,64)); assertEquals(water,water(w));
     }
     @Test void sealedObstructionCanRetryAfterOpening() {
         var w=new World(24,65,World.Mode.BEDROCK_ENABLED); var s=new FixedBlockSession(w,7);
@@ -62,7 +62,7 @@ class OpenPoolRegressionTest {
         for(int y=32;y<64;y++) for(int x=8;x<16;x++) w.set(x,y,Material.WATER);
         for(int x=8;x<16;x++) w.set(x,23,Material.WOOD);
         assertTrue(s.blocks().place(8,24,false)); int water=water(w); var before=s.blocks().blockAt(8,24);
-        s.blocks().step(); assertEquals(before,s.blocks().blockAt(8,24));
+        for(int i=0;i<=FixedBlockWorld.FALL_DELAY_TICKS;i++) s.blocks().step(); assertEquals(before,s.blocks().blockAt(8,24));
         var reason=s.blocks().diagnostics().stream().filter(d->d.id()==before.id()).findFirst().orElseThrow();
         assertEquals(FixedBlockWorld.Reason.WATER_DISPLACEMENT_BLOCKED,reason.reason()); assertEquals(water,water(w));
         w.set(8,23,Material.AIR); s.blocks().step(); assertNotNull(s.blocks().blockAt(8,32)); assertEquals(water,water(w));
