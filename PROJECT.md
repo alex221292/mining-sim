@@ -13,6 +13,7 @@ Configurable fixed-block size: [M4.6c](docs/m4-6c-block-size.md).
 Fixed-block session persistence: [M4.7](docs/m4-7-fixed-block-persistence.md).
 Save input synchronization and user acceptance of M4.7/M4.7.1: [M4.7.1](docs/m4-7-fixed-block-persistence.md).
 Fixed-block structural support and pending manual acceptance: [M4.8a](docs/m4-8a-block-support.md).
+Local horizontal support reset and pending manual acceptance: [M4.8a.1](docs/m4-8a-block-support.md).
 
 ## Vision
 

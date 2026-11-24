@@ -13,6 +13,7 @@
 Сохранение fixed-block-сессий: [M4.7](docs/m4-7-fixed-block-persistence_ru.md).
 Синхронизация ввода при сохранении и пользовательская приёмка M4.7/M4.7.1: [M4.7.1](docs/m4-7-fixed-block-persistence_ru.md).
 Структурная опора блоков и ожидающая ручная приёмка: [M4.8a](docs/m4-8a-block-support_ru.md).
+Локальный горизонтальный бюджет опоры и ожидающая ручная приёмка: [M4.8a.1](docs/m4-8a-block-support_ru.md).
 
 ## Видение
 

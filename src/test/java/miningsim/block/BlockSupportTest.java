@@ -43,8 +43,8 @@ class BlockSupportTest {
         var s=world(z); place(s,0,11*z); place(s,0,10*z);
         for(int i=1;i<=32/z;i++) place(s,i*z,10*z);
         place(s,32,9*z); place(s,32+z,9*z); place(s,32+3*z,10*z);
-        s.tick(); assertEquals(32,s.blocks().blockSupportAt(32,9*z).distanceCells());
-        assertFalse(s.blocks().blockSupportAt(32+z,9*z).supported());
+        s.tick(); assertEquals(0,s.blocks().blockSupportAt(32,9*z).distanceCells());
+        assertEquals(z,s.blocks().blockSupportAt(32+z,9*z).distanceCells());
         assertFalse(s.blocks().blockSupportAt(32+3*z,10*z).supported());
         assertNull(s.blocks().blockSupportAt(-1,0)); assertNull(s.blocks().blockSupportAt(s.world().width(),0));
     }

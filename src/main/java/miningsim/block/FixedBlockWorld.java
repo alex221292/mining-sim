@@ -234,7 +234,7 @@ public final class FixedBlockWorld {
         e.supportDistance=distance;
         if(vertical) queue.addFirst(e); else queue.addLast(e);
     }
-    /** Multi-source 0-1 BFS; only upward and horizontal edges carry support. */
+    /** Repeated relaxation: upward propagation resets cost; horizontal steps add block size. */
     private void analyzeSupport(List<Entry> ordered) {
         long start=System.nanoTime(); int processed=0,contacts=0;
         var queue=new ArrayDeque<Entry>();
@@ -243,7 +243,7 @@ public final class FixedBlockWorld {
             var e=queue.removeFirst(); processed++; int d=e.supportDistance,s=rockBlockSizeCells;
             var above=neighbour(e.x,e.y-s); var left=neighbour(e.x-s,e.y); var right=neighbour(e.x+s,e.y);
             if(above!=null) contacts++; if(left!=null) contacts++; if(right!=null) contacts++;
-            relax(queue,above,d,true); relax(queue,left,d+s,false); relax(queue,right,d+s,false);
+            relax(queue,above,0,true); relax(queue,left,d+s,false); relax(queue,right,d+s,false);
         }
         int supported=0,waiting=0;
         for(var e:ordered) { if(e.supportDistance!=Integer.MAX_VALUE) supported++; if(e.unsupportedTicks>0 && e.state==State.STATIC) waiting++; }

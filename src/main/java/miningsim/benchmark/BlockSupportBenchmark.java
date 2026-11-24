@@ -10,7 +10,7 @@ import miningsim.world.Material;
 public final class BlockSupportBenchmark {
     public static void main(String[] args) throws Exception {
         System.out.println(System.getProperty("java.runtime.version")+"; warmup=20 samples=100; seed=12345");
-        for(int size:new int[]{8,4}) for(String scenario:new String[]{"static100","static1000","static5000","equal-area","beam","bridges","remove-support","water"}) {
+        for(int size:new int[]{8,4}) for(String scenario:new String[]{"static100","static1000","static5000","equal-area","beam","bridges","stepped","remove-support","water"}) {
             int count=switch(scenario) { case "static100" -> 100; case "static5000" -> 5000; case "equal-area" -> size==8?1000:4000; default -> 1000; };
             int width=800,height=401,columns=width/size;
             var s=new FixedBlockSession(new World(width,height,World.Mode.BEDROCK_ENABLED),12345,size);
@@ -20,6 +20,13 @@ public final class BlockSupportBenchmark {
             } else if(scenario.equals("bridges")) {
                 count=0; for(int row=0;row<5;row++) for(int i=0;i<columns;i++) { s.blocks().place(i*size,height-1-(2*row+2)*size,false); count++; }
                 for(int i=0;i<10;i++) { s.blocks().place(0,height-1-(i+1)*size,false); s.blocks().place((columns-1)*size,height-1-(i+1)*size,false); } count=s.blocks().size();
+            } else if(scenario.equals("stepped")) {
+                for(int x=0;x<width-4*size;x+=8*size) {
+                    int ground=height-1-size; s.blocks().place(x,ground,false); s.blocks().place(x,ground-size,false);
+                    s.blocks().place(x+size,ground-size,false); s.blocks().place(x+size,ground-2*size,false);
+                    for(int i=1;i<=4;i++) s.blocks().place(x+(i+1)*size,ground-2*size,false);
+                }
+                count=s.blocks().size();
             } else if(scenario.equals("water")) {
                 count=10; for(int y=height-1-10*size;y<height-1;y++) for(int x=0;x<20*size;x++) s.world().set(x,y,Material.WATER);
                 for(int i=0;i<count;i++) s.blocks().place(i*2*size,height-1-13*size,false);
