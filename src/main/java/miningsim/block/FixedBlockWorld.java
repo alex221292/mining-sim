@@ -17,6 +17,7 @@ public final class FixedBlockWorld {
     public static final int DEFAULT_BLOCK_SIZE=8;
     /** Number of unsupported fixed ticks spent stationary before a new fall. */
     public static final int FALL_DELAY_TICKS=8;
+    public static final int MAX_HORIZONTAL_SUPPORT_DISTANCE_CELLS=32;
     public static final int WATER_SEARCH_RADIUS=32;
     public static final int WATER_MAX_VISITS=8192;
     public static final int WATER_MAX_CHECKS=32768;
@@ -26,12 +27,14 @@ public final class FixedBlockWorld {
     public enum Reason { NONE, PINNED, WAITING_FOR_FALL, SUPPORTED_BY_SOLID, BLOCKED_BY_STONE, WATER_DISPLACEMENT_BLOCKED, WATER_SEARCH_BUDGET_EXCEEDED, INVALID_OR_STALE_PLAN }
     public record BlockDiagnostic(long id,Reason reason,int visits,int checks) { }
     public record TickDiagnostics(int waterAttempts,int moved,int maxVisits,int maxChecks) { }
+    public record SupportDiagnostics(int supported,int unsupported,int waiting,long analysisNanos,int processed,int contacts) { }
+    public record BlockSupport(long id,boolean supported,int distanceCells,State state,int remainingDelayTicks) { }
     public record Block(long id,int x,int y,State state,SubstanceId substance) { }
     /** Authoritative block fields; diagnostics are intentionally omitted. */
     public record SavedBlock(long id,int x,int y,State state,int unsupportedTicks,boolean pinned) { }
     public record SavedState(long nextId,List<SavedBlock> blocks) { public SavedState { blocks=List.copyOf(blocks); } }
     private static final class Entry {
-        final long id; final SubstanceId substance; int x,y; State state=State.STATIC; boolean pinned; Reason reason=Reason.NONE; int visits,checks,unsupportedTicks;
+        final long id; final SubstanceId substance; int x,y; State state=State.STATIC; boolean pinned; Reason reason=Reason.NONE; int visits,checks,unsupportedTicks,supportDistance=Integer.MAX_VALUE;
         Entry(long id,int x,int y,boolean pinned) { this.id=id; this.x=x; this.y=y; this.pinned=pinned; substance=SubstanceRegistry.STONE; }
         Block snapshot() { return new Block(id,x,y,state,substance); }
     }
@@ -41,6 +44,7 @@ public final class FixedBlockWorld {
     private final Map<Long,Entry> byCell=new HashMap<>();
     private long nextId=1,rejected,updateNanos,ticks,obstructed;
     private int waterAttempts,moved,maxVisits,maxChecks;
+    private SupportDiagnostics supportDiagnostics=new SupportDiagnostics(0,0,0,0,0,0);
     public FixedBlockWorld(World world) { this(world,DEFAULT_BLOCK_SIZE); }
     public FixedBlockWorld(World world,int rockBlockSizeCells) {
         this.world=java.util.Objects.requireNonNull(world);
@@ -60,6 +64,12 @@ public final class FixedBlockWorld {
     public long ticks() { return ticks; }
     public long obstructed() { return obstructed; }
     public TickDiagnostics tickDiagnostics() { return new TickDiagnostics(waterAttempts,moved,maxVisits,maxChecks); }
+    public SupportDiagnostics supportDiagnostics() { return supportDiagnostics; }
+    public BlockSupport blockSupportAt(int x,int y) {
+        if(!world.contains(x,y)) return null;
+        var e=byCell.get(key(snapX(x),snapY(y))); if(e==null) return null;
+        return new BlockSupport(e.id,e.supportDistance!=Integer.MAX_VALUE,e.supportDistance==Integer.MAX_VALUE?-1:e.supportDistance,e.state,Math.max(0,FALL_DELAY_TICKS-e.unsupportedTicks));
+    }
     public List<BlockDiagnostic> diagnostics() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(e->new BlockDiagnostic(e.id,e.reason,e.visits,e.checks)).toList(); }
     public List<Block> blocks() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(Entry::snapshot).toList(); }
     public SavedState saveState() {
@@ -207,12 +217,46 @@ public final class FixedBlockWorld {
         }
         return false;
     }
+    private boolean isSupportSource(Entry e) {
+        int y=e.y+rockBlockSizeCells;
+        if(!validArea(e.x,y)) return true;
+        for(int dy=0;dy<rockBlockSizeCells;dy++) for(int dx=0;dx<rockBlockSizeCells;dx++) {
+            var m=world.get(e.x+dx,y+dy);
+            if(m!=Material.AIR && m!=Material.WATER && m!=Material.STONE) return true;
+        }
+        return false;
+    }
+    private Entry neighbour(int x,int y) {
+        return validArea(x,y)?byCell.get(key(x,y)):null;
+    }
+    private void relax(ArrayDeque<Entry> queue,Entry e,int distance,boolean vertical) {
+        if(e==null || e.pinned || e.state==State.FALLING || distance>MAX_HORIZONTAL_SUPPORT_DISTANCE_CELLS || distance>=e.supportDistance) return;
+        e.supportDistance=distance;
+        if(vertical) queue.addFirst(e); else queue.addLast(e);
+    }
+    /** Multi-source 0-1 BFS; only upward and horizontal edges carry support. */
+    private void analyzeSupport(List<Entry> ordered) {
+        long start=System.nanoTime(); int processed=0,contacts=0;
+        var queue=new ArrayDeque<Entry>();
+        for(var e:ordered) { e.supportDistance=Integer.MAX_VALUE; if(!e.pinned && e.state==State.STATIC && isSupportSource(e)) { e.supportDistance=0; queue.addLast(e); } }
+        while(!queue.isEmpty()) {
+            var e=queue.removeFirst(); processed++; int d=e.supportDistance,s=rockBlockSizeCells;
+            var above=neighbour(e.x,e.y-s); var left=neighbour(e.x-s,e.y); var right=neighbour(e.x+s,e.y);
+            if(above!=null) contacts++; if(left!=null) contacts++; if(right!=null) contacts++;
+            relax(queue,above,d,true); relax(queue,left,d+s,false); relax(queue,right,d+s,false);
+        }
+        int supported=0,waiting=0;
+        for(var e:ordered) { if(e.supportDistance!=Integer.MAX_VALUE) supported++; if(e.unsupportedTicks>0 && e.state==State.STATIC) waiting++; }
+        supportDiagnostics=new SupportDiagnostics(supported,ordered.size()-supported,waiting,System.nanoTime()-start,processed,contacts);
+    }
     /** One block-cell down per fixed tick, with bounded atomic water displacement. */
     public void step() {
         long start=System.nanoTime(); waterAttempts=moved=maxVisits=maxChecks=0;
         var ordered=new ArrayList<>(byCell.values()); ordered.sort(Comparator.<Entry>comparingInt(e->e.y).reversed().thenComparingLong(e->e.id));
+        analyzeSupport(ordered);
         for(var e:ordered) {
             if(e.pinned) { e.state=State.STATIC; e.reason=Reason.PINNED; e.visits=e.checks=e.unsupportedTicks=0; continue; }
+            if(e.state==State.STATIC && e.supportDistance!=Integer.MAX_VALUE) { e.unsupportedTicks=0; e.reason=Reason.SUPPORTED_BY_SOLID; e.visits=e.checks=0; continue; }
             int nextY=e.y+rockBlockSizeCells;
             if(e.state==State.STATIC && !hasSolidObstacle(e.x,nextY) && e.unsupportedTicks<FALL_DELAY_TICKS) {
                 e.unsupportedTicks++; e.reason=Reason.WAITING_FOR_FALL; e.visits=e.checks=0; continue;

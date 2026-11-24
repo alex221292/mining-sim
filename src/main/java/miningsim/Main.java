@@ -328,12 +328,13 @@ public final class Main {
             if (diagnostics) {
                 if(fixed!=null) {
                     var b=fixed.blocks(); var list=b.blocks(); long falling=list.stream().filter(v->v.state()==miningsim.block.FixedBlockWorld.State.FALLING).count();
-                    g.drawString("Rock mode: FIXED_BLOCK | blocks "+list.size()+" | STATIC "+(list.size()-falling)+" | FALLING "+falling,8,118);
-                    g.drawString(String.format(Locale.ROOT,"Block update %.3f ms | rejected %d | cellular ticks %d",b.updateNanos()/1e6,b.rejected(),fixed.cellularTicks()),8,135);
+                    var support=b.supportDiagnostics();
+                    g.drawString("Blocks "+list.size()+" | supported "+support.supported()+" | unsupported "+support.unsupported()+" | waiting "+support.waiting()+" | falling "+falling,8,118);
+                    g.drawString(String.format(Locale.ROOT,"Support %.3f ms | processed %d | contacts %d | block %.3f ms",support.analysisNanos()/1e6,support.processed(),support.contacts(),b.updateNanos()/1e6),8,135);
                     var blocked=b.diagnostics().stream().filter(d->d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_DISPLACEMENT_BLOCKED || d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_SEARCH_BUDGET_EXCEEDED || d.reason()==miningsim.block.FixedBlockWorld.Reason.BLOCKED_BY_STONE || d.reason()==miningsim.block.FixedBlockWorld.Reason.INVALID_OR_STALE_PLAN).findFirst();
                     if(blocked.isPresent()) { var d=blocked.get(); g.drawString("Block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,152); }
                     var hovered=b.blockAt(hoverX,hoverY);
-                    if(hovered!=null) b.diagnostics().stream().filter(d->d.id()==hovered.id()).findFirst().ifPresent(d->g.drawString("Cursor block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,169));
+                    if(hovered!=null) { var d=b.blockSupportAt(hoverX,hoverY); g.drawString("Cursor block "+d.id()+" | support "+d.supported()+" distance "+d.distanceCells()+" | "+d.state()+" wait "+d.remainingDelayTicks(),8,169); }
                 } else {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {
