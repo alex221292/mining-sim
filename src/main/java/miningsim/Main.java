@@ -164,6 +164,7 @@ public final class Main {
             // Modal dialogs run a nested event loop; stopping the timer freezes the world.
             timer.stop();
             try {
+                var snapshot=save && fixed!=null ? FixedSessionIO.capture(fixed) : null;
                 JFileChooser chooser = new JFileChooser();
                 chooser.setFileFilter(new FileNameExtensionFilter("Mining Sim world (*.msim)", "msim"));
                 int result = save ? chooser.showSaveDialog(this) : chooser.showOpenDialog(this);
@@ -177,7 +178,7 @@ public final class Main {
                         path = path.resolveSibling(path.getFileName() + ".msim");
                     if (Files.exists(path) && JOptionPane.showConfirmDialog(this, "Replace existing file?", "Save world",
                             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
-                    if(fixed!=null) FixedSessionIO.write(fixed,path);
+                    if(snapshot!=null) snapshot.write(path);
                     else WorldIO.write(world, path);
                 } else {
                     if ((fixed!=null && fixed.blocks().size()>0 || session!=null && SandboxSessionFactory.losesLifecycleState(session)) && JOptionPane.showConfirmDialog(this,

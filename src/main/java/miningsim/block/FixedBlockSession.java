@@ -19,6 +19,11 @@ public final class FixedBlockSession {
     public long cellularTicks() { return cellularTicks; }
     public void enqueue(Runnable command) { commands.addLast(java.util.Objects.requireNonNull(command)); }
     public void applyCommands() { while(!commands.isEmpty()) commands.removeFirst().run(); }
+    /** Apply exactly the commands preceding this owner-thread barrier, without a physics tick. */
+    public void applyCommandsAtSaveBarrier() {
+        int count=commands.size();
+        for(int i=0;i<count;i++) commands.removeFirst().run();
+    }
     public boolean hasPendingCommands() { return !commands.isEmpty(); }
     public void tick() { applyCommands(); blocks.step(); simulation.step(); cellularTicks++; }
     /** Rasterize a stroke segment in grid coordinates; points outside the world are ignored. */

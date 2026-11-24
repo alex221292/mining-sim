@@ -1,6 +1,8 @@
 # M4.7 — MSIM v2 fixed-block persistence
 
-Ctrl+S writes fixed-block sessions as MSIM v2; Ctrl+O validates a new session completely before replacing the current one and restores its 4×4 or 8×8 configuration. The current pause and brush remain; the camera resets. Save runs synchronously on the Swing owner thread between ticks. If commands are queued, save is refused without applying them: resume or single-step and retry. Temporary stroke pins are recorded and validated, then released on load because mouse input does not carry over; a formerly pinned block starts its ordinary fall delay. Legacy MSIM v1 is loaded as a separate LEGACY session, with no conversion of arbitrary STONE to blocks. V1's `WorldIO` behavior and format remain unchanged.
+Ctrl+S writes fixed-block sessions as MSIM v2; Ctrl+O validates a new session completely before replacing the current one and restores its 4×4 or 8×8 configuration. The current pause and brush remain; the camera resets. Save runs synchronously on the Swing owner thread between ticks. At the save request, a bounded barrier applies the input commands already queued, without a physics tick, and captures immutable serialized bytes before opening the dialog. Later commands remain queued and cannot change that snapshot. Canceling the dialog does not undo already applied edits. Temporary stroke pins are recorded and validated, then released on load because mouse input does not carry over; a formerly pinned block starts its ordinary fall delay. Legacy MSIM v1 is loaded as a separate LEGACY session, with no conversion of arbitrary STONE to blocks. V1's `WorldIO` behavior and format remain unchanged.
+
+M4.7's initial manual acceptance failed: Ctrl+S reported pending input after ordinary drawing. Mouse release and focus loss enqueue stroke release, but the queue ran only on physics ticks; the file chooser stopped the timer and could itself cause focus loss. This occurred on pause and also while running if no tick intervened. M4.7.1 adds the save barrier; the low-level direct writer still rejects pending commands. The initial serializer-only tests did not exercise the application's save request. Repeat Swing acceptance remains pending.
 
 ## Binary layout
 
@@ -24,7 +26,7 @@ Each block record contains int64 positive ID, int32 x, int32 y, uint8 state (0 S
 
 Only authoritative block state and World cells are serialized; diagnostic counters, camera, UI and derived caches are not. The cellular RNG is **not** serialized: loading creates a new simulation with seed 12345. Consequently, a loaded scene continues with conserved materials and block state, but is **not guaranteed to match an uninterrupted deterministic replay**. Identical files followed by identical commands replay deterministically from the same load point. No Java object serialization is used for the file format.
 
-Path saves write a sibling temporary file then require atomic replacement; if the filesystem does not support it, the save fails rather than falling back to a potentially unsafe overwrite. Input validation precedes publication of the replacement session. CRC32 detects accidental corruption, not malicious tampering. Synchronous large saves can stall the UI; no background I/O or compression is implemented.
+Path saves write a sibling temporary file then require atomic replacement; if the filesystem does not support it, the save fails rather than falling back to a potentially unsafe overwrite. Input validation precedes publication of the replacement session. CRC32 detects accidental corruption, not malicious tampering. Synchronous large saves can stall the UI and the snapshot temporarily occupies memory proportional to the file size; no background I/O or compression is implemented.
 
 ## Verification and measurements
 

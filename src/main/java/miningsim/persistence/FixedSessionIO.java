@@ -22,6 +22,9 @@ public final class FixedSessionIO {
     }
     public static void write(FixedBlockSession session,OutputStream output) throws IOException {
         if(session.hasPendingCommands()) throw new IOException("Cannot save while input commands are pending");
+        writeState(session,output);
+    }
+    private static void writeState(FixedBlockSession session,OutputStream output) throws IOException {
         var w=session.world(); dimensions(w.width(),w.height()); var blocks=session.blocks(); var saved=blocks.saveState();
         try { new FixedBlockWorld(w,blocks.rockBlockSizeCells()).restoreState(saved); }
         catch(IllegalArgumentException | IllegalStateException ex) { throw new IOException("Invalid fixed-block state: "+ex.getMessage(),ex); }
@@ -34,6 +37,18 @@ public final class FixedSessionIO {
             out.writeByte(b.unsupportedTicks()); out.writeByte(b.pinned()?1:0); out.writeByte(0); // STONE substance
         }
         out.flush(); var raw=new DataOutputStream(output); raw.writeInt((int)crc.getValue()); raw.flush();
+    }
+    /** Owner-thread save barrier: later commands stay queued and cannot change these bytes. */
+    public static Snapshot capture(FixedBlockSession session) throws IOException {
+        session.applyCommandsAtSaveBarrier();
+        var out=new ByteArrayOutputStream();
+        writeState(session,out);
+        return new Snapshot(out.toByteArray());
+    }
+    public static final class Snapshot {
+        private final byte[] bytes;
+        private Snapshot(byte[] bytes) { this.bytes=bytes; }
+        public void write(Path path) throws IOException { writeAtomically(path,out->out.write(bytes)); }
     }
     public static Loaded read(InputStream source) throws IOException {
         var input=source instanceof BufferedInputStream b?b:new BufferedInputStream(source);
@@ -76,9 +91,13 @@ public final class FixedSessionIO {
     public static Loaded read(Path path) throws IOException { try(var in=Files.newInputStream(path)) { return read(in); } }
     /** An unsupported atomic replacement fails rather than risking an existing save. */
     public static void write(FixedBlockSession session,Path path) throws IOException {
+        writeAtomically(path,out->write(session,out));
+    }
+    @FunctionalInterface private interface Writer { void write(OutputStream out) throws IOException; }
+    private static void writeAtomically(Path path,Writer writer) throws IOException {
         Path absolute=path.toAbsolutePath(),temp=Files.createTempFile(absolute.getParent(),".msim-",".tmp");
         try {
-            try(var out=new BufferedOutputStream(Files.newOutputStream(temp))) { write(session,out); }
+            try(var out=new BufferedOutputStream(Files.newOutputStream(temp))) { writer.write(out); }
             Files.move(temp,absolute,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
         } finally { Files.deleteIfExists(temp); }
     }
