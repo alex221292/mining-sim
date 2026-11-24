@@ -48,6 +48,16 @@ If the user explicitly requests a review, plan, explanation, or a single small c
 
 ## Repository and development environment
 
+### Workspace safety
+
+- The sole project working directory is `D:\WORK\mining-sim`. Use ordinary Git branches and `git switch`.
+- Create additional worktrees, clones, or working directories only with explicit user permission.
+- Never independently delete user files, IDE settings, caches, or build outputs.
+- Never independently launch GUI or interactive applications on the user's machine.
+- Run headless tests and benchmarks only when explicitly authorized by the active task.
+- Manual GUI acceptance is performed by the user.
+- Write all agent reports in Russian.
+
 - Language: **Java 25**.
 - Build: **Gradle Wrapper**, currently Gradle 9.x; check the wrapper rather than assuming a version.
 - Desktop UI: **Swing / Java2D**.
