@@ -11,7 +11,7 @@
 Стабилизация блоков и задержка падения: [M4.6b.2](docs/m4-6b2-stabilization_ru.md).
 Настраиваемый размер фиксированных блоков: [M4.6c](docs/m4-6c-block-size_ru.md).
 Сохранение fixed-block-сессий: [M4.7](docs/m4-7-fixed-block-persistence_ru.md).
-Синхронизация ввода при сохранении и ожидающая повторная приёмка: [M4.7.1](docs/m4-7-fixed-block-persistence_ru.md).
+Синхронизация ввода при сохранении и пользовательская приёмка M4.7/M4.7.1: [M4.7.1](docs/m4-7-fixed-block-persistence_ru.md).
 
 ## Видение
 
