@@ -19,6 +19,10 @@ The user reported **PASS (user-verified)** in Swing for all six scenarios:
 
 Automated tests and benchmarks are separate evidence, not part of this manual check. Experimental 4×4 is not the default; 8×8 remains the default. Production stability across all possible scenes has not been established.
 
+## Final M4.6d acceptance
+
+The user confirmed manual Swing acceptance of the final local `main`: **6/6 PASS**. The checks covered startup with 8×8 as the default; drawing, erasing, falling and the delay after support loss; blocks entering and displacing water while sand is active; F7 switching to 4×4; simulation in 4×4 mode; and switching back to 8×8. This manual check is separate from automated tests and benchmarks. Existing limitations remain, including the prohibition on saving fixed-block scenes to `.msim`.
+
 ## Measurements
 
 Windows, OpenJDK 25.0.5+8-LTS OpenJDK 64-Bit Server VM. `java -cp build/classes/java/main miningsim.block.BlockSizeBenchmark SIZE 10`: fresh 800×401 worlds, seed 12345, two warmups and 10 independent one-tick samples, separate JVMs; mean/p95 milliseconds, block phase and full tick (including cellular, excluding repaint). Moving scenes prime the same eight delay ticks without cellular movement. The baseline is commit `d803743` with the same benchmark source and JVM. Small samples include significant JVM/OS noise.
