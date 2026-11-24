@@ -10,6 +10,7 @@ Fixed blocks displacing water: [M4.6b](docs/m4-6b-water-displacement.md).
 Open-pool obstruction fix: [M4.6b.1](docs/m4-6b1-open-pool.md).
 Fixed-block stabilization and fall delay: [M4.6b.2](docs/m4-6b2-stabilization.md).
 Configurable fixed-block size: [M4.6c](docs/m4-6c-block-size.md).
+Fixed-block session persistence: [M4.7](docs/m4-7-fixed-block-persistence.md).
 
 ## Vision
 

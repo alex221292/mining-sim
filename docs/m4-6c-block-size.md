@@ -1,5 +1,7 @@
 # M4.6c — configurable fixed-block size
 
+Historical note: fixed-block saving was added in [M4.7](m4-7-fixed-block-persistence.md).
+
 Each fixed-block session has one immutable `rockBlockSizeCells`: **8** by default or experimental **4**. Sizes cannot be mixed within a session. F7 asks for confirmation, then replaces the current scene with an empty session of the other size; no conversion is performed. Reset and compatible loads retain the selected size. The HUD displays the size and marks 4×4 experimental. Existing pause, single-step, camera, F3, painting and erasing controls remain available. The `.msim` format is unchanged and fixed-block saving remains disabled.
 
 Both sizes use the same owner-thread phases, grid snapping, bottom-anchored `yOffset=(height-1) mod size`, atomic World batches, eight-tick fall delay and water displacement planner. Movement is one block size per tick. BFS remains radius 32, 8192 visits and 32768 checks; the vertical vent remains bounded to 128 cells per column. A 4×4 move displaces at most 16 WATER cells rather than 64; the work limits are unchanged, not scaled. SAND, GRAVEL, SOIL and other non-water material remain obstacles. Partially fitting edge strips cannot hold a block.

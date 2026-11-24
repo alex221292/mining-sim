@@ -39,6 +39,7 @@ import miningsim.structural.RestingStackFixture;
 import miningsim.render.Java2DRenderer;
 import miningsim.render.Renderer;
 import miningsim.persistence.WorldIO;
+import miningsim.persistence.FixedSessionIO;
 import miningsim.world.Material;
 import miningsim.world.World;
 import miningsim.block.FixedBlockSession;
@@ -163,7 +164,6 @@ public final class Main {
             // Modal dialogs run a nested event loop; stopping the timer freezes the world.
             timer.stop();
             try {
-                if(save && fixed!=null) { JOptionPane.showMessageDialog(this,"Fixed-block worlds cannot yet be saved without losing block ownership.","Save unavailable",JOptionPane.WARNING_MESSAGE); return; }
                 JFileChooser chooser = new JFileChooser();
                 chooser.setFileFilter(new FileNameExtensionFilter("Mining Sim world (*.msim)", "msim"));
                 int result = save ? chooser.showSaveDialog(this) : chooser.showOpenDialog(this);
@@ -177,20 +177,20 @@ public final class Main {
                         path = path.resolveSibling(path.getFileName() + ".msim");
                     if (Files.exists(path) && JOptionPane.showConfirmDialog(this, "Replace existing file?", "Save world",
                             JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
-                    WorldIO.write(world, path);
+                    if(fixed!=null) FixedSessionIO.write(fixed,path);
+                    else WorldIO.write(world, path);
                 } else {
                     if ((fixed!=null && fixed.blocks().size()>0 || session!=null && SandboxSessionFactory.losesLifecycleState(session)) && JOptionPane.showConfirmDialog(this,
                             "Loading replaces the current rigid bodies and settled-rock state. Continue?",
                             "Replace current session",JOptionPane.YES_NO_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.YES_OPTION) return;
-                    World loaded = WorldIO.read(path);
-                    for(int y=0;y<loaded.height();y++) for(int x=0;x<loaded.width();x++) if(loaded.get(x,y)==Material.STONE) throw new IOException("World contains legacy STONE; fixed-block import is not supported.");
-                    if(loaded.mode()!=World.Mode.BEDROCK_ENABLED) throw new IOException("Fixed-block sandbox requires a bedrock world.");
-                    var nextFixed=new FixedBlockSession(loaded,12345,rockBlockSizeCells);
-                    SimulationControl nextControl = new SimulationControl(nextFixed::tick);
+                    var prepared=FixedSessionIO.read(path); World loaded=prepared.world(); var nextFixed=prepared.fixed();
+                    InteractiveSession nextSession=prepared.legacy()?new InteractiveSession(loaded,null,diagnostics,false):null;
+                    SimulationControl nextControl = new SimulationControl(nextFixed!=null?nextFixed::tick:nextSession::tick);
                     if (control.paused()) nextControl.togglePause();
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
-                    if(session!=null) session.retire(); world = loaded; session=null; fixed=nextFixed; control = nextControl; renderer = nextRenderer;
-                    structural = null; sceneIndex = -1; sceneName = "";
+                    if(session!=null) session.retire(); world = loaded; session=nextSession; fixed=nextFixed; control = nextControl; renderer = nextRenderer;
+                    if(nextFixed!=null) rockBlockSizeCells=nextFixed.blocks().rockBlockSizeCells();
+                    structural = null; sceneIndex = -1; sceneName = ""; left=right=strokeStarted=false;
                     camera.reset();
                 }
             } catch (IOException e) {
@@ -314,7 +314,7 @@ public final class Main {
             g.setColor(Color.WHITE);
             g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
             String runState=session!=null && session.blocked()?"BLOCKED":control.paused()?"PAUSED":session!=null && session.failure()!=null?"RETRYING":"RUNNING";
-            g.drawString("Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells+(rockBlockSizeCells==4?" EXPERIMENTAL":""):"") + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
+            g.drawString("Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells+(rockBlockSizeCells==4?" EXPERIMENTAL":""):world.mode()==World.Mode.LEGACY?" | LEGACY v1":"") + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
@@ -322,7 +322,7 @@ public final class Main {
                 String reason=session.failure(); if(reason.length()>85) reason=reason.substring(0,82)+"...";
                 g.drawString(reason+" | F6 retry",8,67);
             } else g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
-            g.drawString(fixed!=null?"Fixed blocks: save unavailable | Ctrl+O: load":"Ctrl+S: save | Ctrl+O: load", 8, 84);
+            g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
             g.drawString(fixed!=null?"F3: diagnostics | F4: reference scene | F7: block size (clears scene)":"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: block size",8,101);
             if (diagnostics) {
                 if(fixed!=null) {

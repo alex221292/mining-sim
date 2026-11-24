@@ -10,6 +10,7 @@
 Исправление препятствий в открытом бассейне: [M4.6b.1](docs/m4-6b1-open-pool_ru.md).
 Стабилизация блоков и задержка падения: [M4.6b.2](docs/m4-6b2-stabilization_ru.md).
 Настраиваемый размер фиксированных блоков: [M4.6c](docs/m4-6c-block-size_ru.md).
+Сохранение fixed-block-сессий: [M4.7](docs/m4-7-fixed-block-persistence_ru.md).
 
 ## Видение
 

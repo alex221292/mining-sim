@@ -27,6 +27,9 @@ public final class FixedBlockWorld {
     public record BlockDiagnostic(long id,Reason reason,int visits,int checks) { }
     public record TickDiagnostics(int waterAttempts,int moved,int maxVisits,int maxChecks) { }
     public record Block(long id,int x,int y,State state,SubstanceId substance) { }
+    /** Authoritative block fields; diagnostics are intentionally omitted. */
+    public record SavedBlock(long id,int x,int y,State state,int unsupportedTicks,boolean pinned) { }
+    public record SavedState(long nextId,List<SavedBlock> blocks) { public SavedState { blocks=List.copyOf(blocks); } }
     private static final class Entry {
         final long id; final SubstanceId substance; int x,y; State state=State.STATIC; boolean pinned; Reason reason=Reason.NONE; int visits,checks,unsupportedTicks;
         Entry(long id,int x,int y,boolean pinned) { this.id=id; this.x=x; this.y=y; this.pinned=pinned; substance=SubstanceRegistry.STONE; }
@@ -59,6 +62,31 @@ public final class FixedBlockWorld {
     public TickDiagnostics tickDiagnostics() { return new TickDiagnostics(waterAttempts,moved,maxVisits,maxChecks); }
     public List<BlockDiagnostic> diagnostics() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(e->new BlockDiagnostic(e.id,e.reason,e.visits,e.checks)).toList(); }
     public List<Block> blocks() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(Entry::snapshot).toList(); }
+    public SavedState saveState() {
+        return new SavedState(nextId,byCell.values().stream().sorted(Comparator.comparingLong(e->e.id))
+                .map(e->new SavedBlock(e.id,e.x,e.y,e.state,e.unsupportedTicks,e.pinned)).toList());
+    }
+    /** Rebuild metadata only after verifying that every STONE cell is owned exactly once. */
+    public void restoreState(SavedState saved) {
+        if(!byCell.isEmpty() || nextId!=1) throw new IllegalStateException("Restore requires empty registry");
+        java.util.Objects.requireNonNull(saved); var ids=new HashSet<Long>(); var entries=new HashMap<Long,Entry>();
+        long max=0;
+        for(var b:saved.blocks()) {
+            if(b==null || b.id()<=0 || !ids.add(b.id()) || b.state()==null || b.unsupportedTicks()<0 || b.unsupportedTicks()>FALL_DELAY_TICKS
+                    || b.state()==State.FALLING && (b.unsupportedTicks()!=0 || b.pinned()) || b.pinned() && b.unsupportedTicks()!=0
+                    || !validArea(b.x(),b.y()) || snapX(b.x())!=b.x() || snapY(b.y())!=b.y())
+                throw new IllegalArgumentException("Invalid block record");
+            var e=new Entry(b.id(),b.x(),b.y(),b.pinned()); e.state=b.state(); e.unsupportedTicks=b.unsupportedTicks();
+            if(entries.put(key(b.x(),b.y()),e)!=null) throw new IllegalArgumentException("Overlapping blocks");
+            for(int y=b.y();y<b.y()+rockBlockSizeCells;y++) for(int x=b.x();x<b.x()+rockBlockSizeCells;x++)
+                if(world.get(x,y)!=Material.STONE) throw new IllegalArgumentException("Block and World mismatch");
+            max=Math.max(max,b.id());
+        }
+        if(saved.nextId()<=max || saved.nextId()<=0 || saved.nextId()==Long.MAX_VALUE) throw new IllegalArgumentException("Invalid next block ID");
+        long stone=0; for(int y=0;y<world.height();y++) for(int x=0;x<world.width();x++) if(world.get(x,y)==Material.STONE) stone++;
+        if(stone!=(long)entries.size()*rockBlockSizeCells*rockBlockSizeCells) throw new IllegalArgumentException("Unowned STONE cells");
+        byCell.putAll(entries); nextId=saved.nextId();
+    }
     public Block blockAt(int x,int y) { if(!world.contains(x,y)) return null; var e=byCell.get(key(snapX(x),snapY(y))); return e==null?null:e.snapshot(); }
     private boolean validArea(int x,int y) { return x>=0 && y>=0 && x<=world.width()-rockBlockSizeCells && y<=world.height()-rockBlockSizeCells; }
     private boolean empty(int x,int y) {

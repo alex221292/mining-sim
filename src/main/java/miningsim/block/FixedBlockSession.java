@@ -18,7 +18,9 @@ public final class FixedBlockSession {
     public FixedBlockWorld blocks() { return blocks; }
     public long cellularTicks() { return cellularTicks; }
     public void enqueue(Runnable command) { commands.addLast(java.util.Objects.requireNonNull(command)); }
-    public void tick() { while(!commands.isEmpty()) commands.removeFirst().run(); blocks.step(); simulation.step(); cellularTicks++; }
+    public void applyCommands() { while(!commands.isEmpty()) commands.removeFirst().run(); }
+    public boolean hasPendingCommands() { return !commands.isEmpty(); }
+    public void tick() { applyCommands(); blocks.step(); simulation.step(); cellularTicks++; }
     /** Rasterize a stroke segment in grid coordinates; points outside the world are ignored. */
     public void blockStroke(int x0,int y0,int x1,int y1,boolean erase) {
         if(!world.contains(x0,y0) || !world.contains(x1,y1)) return;
