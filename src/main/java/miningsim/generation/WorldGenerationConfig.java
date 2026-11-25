@@ -2,9 +2,11 @@ package miningsim.generation;
 
 import miningsim.persistence.WorldIO;
 
-/** Cell coordinates: y increases downward; surface is the first STONE row. */
+/** Cell coordinates: y increases downward; surface is the first potential deposit row. */
 public record WorldGenerationConfig(long seed,int width,int height,int blockSize,int baseSurfaceHeight,
                                     int terrainAmplitude,int terrainScale,int soilDepth) {
+    public static final int MAX_SAND_DEPTH=32, MAX_GRAVEL_DEPTH=16;
+    public static final int LAYER_SCALE_MULTIPLIER=2;
     public WorldGenerationConfig {
         if((blockSize!=4 && blockSize!=8) || width<blockSize || width>WorldIO.MAX_DIMENSION || height>WorldIO.MAX_DIMENSION
                 || height<3*blockSize+1 || (long)width*height>WorldIO.MAX_CELLS || width%blockSize!=0

@@ -15,6 +15,7 @@ Save input synchronization and user acceptance of M4.7/M4.7.1: [M4.7.1](docs/m4-
 Fixed-block structural support, accepted by the user: [M4.8a](docs/m4-8a-block-support.md).
 Local horizontal support reset, accepted by the user: [M4.8a.1](docs/m4-8a-block-support.md).
 Deterministic procedural world generation, accepted by the user: [M5.1](docs/m5-1-world-generation.md).
+Geological layers and pending manual acceptance: [M5.2](docs/m5-2-geological-layers.md).
 
 ## Vision
 

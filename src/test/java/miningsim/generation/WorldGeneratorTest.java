@@ -39,7 +39,8 @@ class WorldGeneratorTest {
         for(int y=0;y<65;y++) for(int x=0;x<64;x++) {
             var m=a.world().get(x,y); if(y==64) assertEquals(Material.BEDROCK,m);
             int surface=WorldGenerator.surface(c,x); assertTrue(surface>=c.baseSurfaceHeight()-c.terrainAmplitude()-size && surface<=c.baseSurfaceHeight()+c.terrainAmplitude()+size);
-            if(y<64) assertEquals(y<surface-c.soilDepth()?Material.AIR:y<surface?Material.SOIL:Material.STONE,m);
+            var layers=WorldGenerator.layers(c,x);
+            if(y<64) assertEquals(y<surface?Material.AIR:y<surface+layers.soil()?Material.SOIL:y<surface+layers.soil()+layers.sand()?Material.SAND:y<layers.stoneTop()?Material.GRAVEL:Material.STONE,m);
             if(m==Material.STONE) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } if(m==Material.SOIL) soil++; if(m==Material.AIR) air++;
         }
         assertEquals(a.blocks().size()*size*size,stone); assertTrue(soil>0); assertTrue(air>0);
@@ -51,8 +52,11 @@ class WorldGeneratorTest {
         assertTrue(loaded.world().occupiedCount()>0);
     }
     @ParameterizedTest @ValueSource(ints={4,8}) void replayTenThousandTicks(int size) throws Exception {
-        var a=WorldGenerator.generate(config(71,size)).session(); var b=WorldGenerator.generate(config(71,size)).session();
-        int initialBlocks=a.blocks().size(); int initialSoil=64*4;
+        var replayConfig=new WorldGenerationConfig(12345,128,65,size,24,8,24,4);
+        var a=WorldGenerator.generate(replayConfig).session(); var b=WorldGenerator.generate(replayConfig).session();
+        int initialBlocks=a.blocks().size(); int[] initial=new int[Material.values().length];
+        for(int y=0;y<65;y++) for(int x=0;x<a.world().width();x++) initial[Byte.toUnsignedInt(a.world().get(x,y).id())]++;
+        assertTrue(initial[Byte.toUnsignedInt(Material.SAND.id())]>0); assertTrue(initial[Byte.toUnsignedInt(Material.GRAVEL.id())]>0);
         for(int t=0;t<10000;t++) {
             for(var s:java.util.List.of(a,b)) {
                 if(t==1) { s.enqueue(()->s.paintCells(50,1,0,Material.WATER)); s.enqueue(()->s.paintCells(55,1,0,Material.SAND)); }
@@ -63,10 +67,11 @@ class WorldGeneratorTest {
             }
             if(t%500==0) {
                 byte[] snapshot=bytes(a); assertArrayEquals(snapshot,bytes(b)); a=load(snapshot); b=load(snapshot);
-                int stone=0,soil=0,sand=0,water=0;
-                for(int y=0;y<65;y++) for(int x=0;x<64;x++) { var m=a.world().get(x,y); if(m==Material.STONE) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } if(m==Material.SOIL) soil++; if(m==Material.SAND) sand++; if(m==Material.WATER) water++; }
-                assertEquals(a.blocks().size()*size*size,stone); assertEquals(initialSoil,soil);
-                assertEquals(t>=1?1:0,sand); assertEquals(t>=1?1:0,water);
+                int stone=0; int[] counts=new int[Material.values().length];
+                for(int y=0;y<65;y++) for(int x=0;x<a.world().width();x++) { var m=a.world().get(x,y); counts[Byte.toUnsignedInt(m.id())]++; if(m==Material.STONE) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } }
+                assertEquals(a.blocks().size()*size*size,stone); assertEquals(initial[Byte.toUnsignedInt(Material.SOIL.id())],counts[Byte.toUnsignedInt(Material.SOIL.id())]);
+                assertEquals(initial[Byte.toUnsignedInt(Material.GRAVEL.id())],counts[Byte.toUnsignedInt(Material.GRAVEL.id())]);
+                assertEquals(initial[Byte.toUnsignedInt(Material.SAND.id())]+(t>=1?1:0),counts[Byte.toUnsignedInt(Material.SAND.id())]); assertEquals(t>=1?1:0,counts[Byte.toUnsignedInt(Material.WATER.id())]);
                 assertEquals(initialBlocks-(t>=50?1:0)+(t>=100?8/size+1:0),a.blocks().size());
             }
         }

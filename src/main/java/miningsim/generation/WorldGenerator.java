@@ -16,7 +16,7 @@ public final class WorldGenerator {
         z=(z^(z>>>30))*0xbf58476d1ce4e5b9L; z=(z^(z>>>27))*0x94d049bb133111ebL; z^=z>>>31;
         return ((z>>>11)*0x1.0p-53)*2-1;
     }
-    /** First stone row at the aligned block column x, derived from smooth seeded value noise. */
+    /** Upper terrain boundary at the aligned block column x, derived from seeded value noise. */
     public static int surface(WorldGenerationConfig c,int x) {
         if(x<0 || x>=c.width()) throw new IllegalArgumentException("Surface coordinate out of bounds");
         int column=(x/c.blockSize())*c.blockSize(); double pos=(column+c.blockSize()*0.5)/c.terrainScale();
@@ -26,18 +26,40 @@ public final class WorldGenerator {
         int min=((c.soilDepth()+c.blockSize()+c.blockSize()-1)/c.blockSize())*c.blockSize();
         int max=c.height()-1-2*c.blockSize(); return Math.max(min,Math.min(max,aligned));
     }
+    public record Layers(int surface,int soil,int sand,int gravel,int stoneTop) { }
+    private static int layer(WorldGenerationConfig c,int x,long channel,int max,double threshold) {
+        double position=(x+c.blockSize()*0.5)/(c.terrainScale()*(double)WorldGenerationConfig.LAYER_SCALE_MULTIPLIER);
+        int i=(int)Math.floor(position); double t=position-i,b=t*t*(3-2*t);
+        double v=anchor(c.seed()^channel,i)*(1-b)+anchor(c.seed()^channel,i+1)*b;
+        double fraction=Math.max(0,(v-threshold)/(1-threshold));
+        return ((int)Math.round(max*fraction/c.blockSize()))*c.blockSize();
+    }
+    /** All boundaries are aligned; upper surface and layer thicknesses are in cells. */
+    public static Layers layers(WorldGenerationConfig c,int x) {
+        int top=surface(c,x),column=(x/c.blockSize())*c.blockSize(),size=c.blockSize();
+        int available=c.height()-1-2*size-top;
+        int soil=Math.min(available,layer(c,column,0x612a9f17L,Math.min(16,c.soilDepth()*2),-0.15)); available-=soil;
+        int sand=Math.min(available,layer(c,column,0x7a2f4b35L,WorldGenerationConfig.MAX_SAND_DEPTH,0.05)); available-=sand;
+        int gravel=Math.min(available,layer(c,column,0x4eacb905L,WorldGenerationConfig.MAX_GRAVEL_DEPTH,0.15));
+        return new Layers(top,soil,sand,gravel,top+soil+sand+gravel);
+    }
     public static Generated generate(WorldGenerationConfig c) {
         java.util.Objects.requireNonNull(c);
         var world=new World(c.width(),c.height(),World.Mode.BEDROCK_ENABLED);
         var session=new FixedBlockSession(world,12345,c.blockSize());
         int size=c.blockSize();
         // Stable row-major block IDs, with an unbroken column down to BEDROCK.
-        int[] surface=new int[c.width()/size];
-        for(int col=0;col<surface.length;col++) surface[col]=surface(c,col*size);
-        for(int y=0;y<c.height()-1;y+=size) for(int col=0;col<surface.length;col++)
-            if(y>=surface[col] && !session.blocks().place(col*size,y,false)) throw new IllegalStateException("Terrain block placement failed");
-        for(int x=0;x<c.width();x++) for(int y=surface[x/size]-c.soilDepth();y<surface[x/size];y++)
-            if(world.set(x,y,Material.SOIL)!=World.Mutation.CHANGED) throw new IllegalStateException("Terrain soil placement failed");
+        Layers[] layers=new Layers[c.width()/size];
+        for(int col=0;col<layers.length;col++) layers[col]=layers(c,col*size);
+        for(int y=0;y<c.height()-1;y+=size) for(int col=0;col<layers.length;col++)
+            if(y>=layers[col].stoneTop() && !session.blocks().place(col*size,y,false)) throw new IllegalStateException("Terrain block placement failed");
+        for(int x=0;x<c.width();x++) {
+            var l=layers[x/size];
+            for(int y=l.surface();y<l.stoneTop();y++) {
+                Material material=y<l.surface()+l.soil()?Material.SOIL:y<l.surface()+l.soil()+l.sand()?Material.SAND:Material.GRAVEL;
+                if(world.set(x,y,material)!=World.Mutation.CHANGED) throw new IllegalStateException("Terrain layer placement failed");
+            }
+        }
         // Validate all ownership records before exposing the newly constructed session.
         new FixedBlockWorld(world,size).restoreState(session.blocks().saveState());
         return new Generated(session,c);
