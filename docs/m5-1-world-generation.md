@@ -8,7 +8,7 @@ STONE blocks are placed through the authoritative fixed-block API in ascending r
 
 ## Verification
 
-`WorldGeneratorTest` exercises both sizes, deterministic and differing seeds, grid and ownership, 600-tick rock stability, MSIM round-trip, editing, invalid parameters, cancellation preparation and 10,000-tick seeded paired replay with edits, water, sand, periodic reload and material/ownership accounting. GUI acceptance is pending; the agent did not launch Swing.
+`WorldGeneratorTest` exercises both sizes, deterministic and differing seeds, grid and ownership, 600-tick rock stability, MSIM round-trip, editing, invalid parameters, cancellation preparation and 10,000-tick seeded paired replay with edits, water, sand, periodic reload and material/ownership accounting. The user completed manual GUI acceptance; the agent did not launch Swing.
 
 ## Exploratory performance
 
@@ -22,6 +22,8 @@ Windows, OpenJDK 25.0.5+8-LTS, world 800×401, seed 12345; `java -cp build/class
 The single 8×8 first-tick observation exceeded 16.67 ms; warmup/JIT and run order may affect it, and the sample does not establish the cause or a worst-case bound. Synchronous generation and save/load can exceed a frame budget; no performance guarantee is claimed.
 
 ## Manual acceptance
+
+The user confirmed that all planned Swing acceptance cases passed. Additional checks covered editing natural rock, creating underground cavities, rock collapse under existing support rules, filling cavities with water, water flowing from the surface through artificial openings, saving and loading the modified generated world, and both 8×8 and 4×4 block sizes. All results were accepted by the user.
 
 1. F8 generate 8×8, enter a seed and inspect the paused terrain and F3.
 2. Regenerate with the same seed, then a different seed; compare the surface.
