@@ -11,6 +11,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class GeologicalLayersTest {
+    @ParameterizedTest @ValueSource(ints={4,8}) void calibratedDiversityAcrossFixedSeeds(int size) {
+        int soilSeeds=0,sandSeeds=0,gravelSeeds=0,outcropSeeds=0; boolean cellResolution=false;
+        for(int seed=0;seed<32;seed++) {
+            var c=WorldGenerationConfig.preset(seed,size); int soil=0,sand=0,gravel=0,outcropRun=0,longest=0;
+            for(int x=0;x<c.width();x+=size) {
+                var l=WorldGenerator.layers(c,x); soil=Math.max(soil,l.soil()); sand=Math.max(sand,l.sand()); gravel=Math.max(gravel,l.gravel());
+                cellResolution|=l.soil()%size!=0 || l.sand()%size!=0 || l.gravel()%size!=0;
+                if(l.surface()==l.stoneTop()) { outcropRun+=size; longest=Math.max(longest,outcropRun); } else outcropRun=0;
+            }
+            if(soil>=16) soilSeeds++; if(sand>=32) sandSeeds++; if(gravel>=24) gravelSeeds++; if(longest>=32) outcropSeeds++;
+        }
+        assertTrue(soilSeeds>=8); assertTrue(sandSeeds>=8); assertTrue(gravelSeeds>=8); assertTrue(outcropSeeds>=4); assertTrue(cellResolution);
+    }
     private byte[] save(FixedBlockSession s) throws Exception { var out=new ByteArrayOutputStream(); FixedSessionIO.write(s,out); return out.toByteArray(); }
     private int[] counts(FixedBlockSession s) {
         int[] counts=new int[Material.values().length];
@@ -25,7 +38,7 @@ class GeologicalLayersTest {
             var ids=new java.util.HashSet<Long>(); for(var block:a.blocks().blocks()) assertTrue(ids.add(block.id()));
             for(int x=0;x<c.width();x++) {
                 var l=WorldGenerator.layers(c,x); assertEquals(0,l.surface()%size); assertEquals(0,l.stoneTop()%size);
-                assertTrue(l.soil()>=0 && l.soil()<=16); assertTrue(l.sand()>=0 && l.sand()<=32); assertTrue(l.gravel()>=0 && l.gravel()<=16);
+                assertTrue(l.soil()>=0 && l.soil()<=24); assertTrue(l.sand()>=0 && l.sand()<=64); assertTrue(l.gravel()>=0 && l.gravel()<=48);
                 soil|=l.soil()>0; sand|=l.sand()>0; gravel|=l.gravel()>0; outcrop|=l.surface()==l.stoneTop();
                 if(x%size!=0) assertEquals(WorldGenerator.layers(c,x-1),l);
                 for(int y=0;y<c.height();y++) {
@@ -39,7 +52,7 @@ class GeologicalLayersTest {
         for(int x=0;x<first.width();x+=size) {
             var a=WorldGenerator.layers(first,x); var b=WorldGenerator.layers(second,x);
             layerDifference|=a.soil()!=b.soil() || a.sand()!=b.sand() || a.gravel()!=b.gravel();
-            if(x>0) { var p=WorldGenerator.layers(first,x-size); assertTrue(Math.abs(a.soil()-p.soil())<=size); assertTrue(Math.abs(a.sand()-p.sand())<=size); assertTrue(Math.abs(a.gravel()-p.gravel())<=size); }
+            if(x>0) { var p=WorldGenerator.layers(first,x-size); assertTrue(Math.abs(a.soil()-p.soil())<=2*size); assertTrue(Math.abs(a.sand()-p.sand())<=2*size); assertTrue(Math.abs(a.gravel()-p.gravel())<=2*size); }
         }
         assertTrue(layerDifference,"different seeds must affect geological layers");
     }

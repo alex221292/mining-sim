@@ -5,7 +5,7 @@ import miningsim.persistence.WorldIO;
 /** Cell coordinates: y increases downward; surface is the first potential deposit row. */
 public record WorldGenerationConfig(long seed,int width,int height,int blockSize,int baseSurfaceHeight,
                                     int terrainAmplitude,int terrainScale,int soilDepth) {
-    public static final int MAX_SAND_DEPTH=32, MAX_GRAVEL_DEPTH=16;
+    public static final int MAX_SOIL_DEPTH=24, MAX_SAND_DEPTH=64, MAX_GRAVEL_DEPTH=48;
     public static final int LAYER_SCALE_MULTIPLIER=2;
     public WorldGenerationConfig {
         if((blockSize!=4 && blockSize!=8) || width<blockSize || width>WorldIO.MAX_DIMENSION || height>WorldIO.MAX_DIMENSION
@@ -16,6 +16,6 @@ public record WorldGenerationConfig(long seed,int width,int height,int blockSize
             throw new IllegalArgumentException("Invalid terrain configuration or incompatible block grid");
     }
     public static WorldGenerationConfig preset(long seed,int blockSize) {
-        return new WorldGenerationConfig(seed,800,401,blockSize,160,32,96,8);
+        return new WorldGenerationConfig(seed,800,401,blockSize,160,48,96,8);
     }
 }

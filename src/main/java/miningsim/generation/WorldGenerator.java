@@ -32,16 +32,19 @@ public final class WorldGenerator {
         int i=(int)Math.floor(position); double t=position-i,b=t*t*(3-2*t);
         double v=anchor(c.seed()^channel,i)*(1-b)+anchor(c.seed()^channel,i+1)*b;
         double fraction=Math.max(0,(v-threshold)/(1-threshold));
-        return ((int)Math.round(max*fraction/c.blockSize()))*c.blockSize();
+        return (int)Math.round(max*fraction);
     }
-    /** All boundaries are aligned; upper surface and layer thicknesses are in cells. */
+    /** Upper and rock boundaries are aligned; loose-layer thicknesses are in cells. */
     public static Layers layers(WorldGenerationConfig c,int x) {
         int top=surface(c,x),column=(x/c.blockSize())*c.blockSize(),size=c.blockSize();
         int available=c.height()-1-2*size-top;
-        int soil=Math.min(available,layer(c,column,0x612a9f17L,Math.min(16,c.soilDepth()*2),-0.15)); available-=soil;
-        int sand=Math.min(available,layer(c,column,0x7a2f4b35L,WorldGenerationConfig.MAX_SAND_DEPTH,0.05)); available-=sand;
-        int gravel=Math.min(available,layer(c,column,0x4eacb905L,WorldGenerationConfig.MAX_GRAVEL_DEPTH,0.15));
-        return new Layers(top,soil,sand,gravel,top+soil+sand+gravel);
+        int soil=Math.min(available,layer(c,column,0x612a9f17L,Math.min(WorldGenerationConfig.MAX_SOIL_DEPTH,c.soilDepth()*3),-0.2)); available-=soil;
+        int sand=Math.min(available,layer(c,column,0x7a2f4b35L,WorldGenerationConfig.MAX_SAND_DEPTH,-0.2)); available-=sand;
+        int gravel=Math.min(available,layer(c,column,0x4eacb905L,WorldGenerationConfig.MAX_GRAVEL_DEPTH,-0.2));
+        int total=soil+sand+gravel,aligned=(total/size)*size,excess=total-aligned;
+        int cut=Math.min(excess,gravel); gravel-=cut; excess-=cut;
+        cut=Math.min(excess,sand); sand-=cut; excess-=cut; soil-=excess;
+        return new Layers(top,soil,sand,gravel,top+aligned);
     }
     public static Generated generate(WorldGenerationConfig c) {
         java.util.Objects.requireNonNull(c);
