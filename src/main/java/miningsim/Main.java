@@ -43,6 +43,8 @@ import miningsim.persistence.FixedSessionIO;
 import miningsim.world.Material;
 import miningsim.world.World;
 import miningsim.block.FixedBlockSession;
+import miningsim.generation.WorldGenerationConfig;
+import miningsim.generation.WorldGenerator;
 
 public final class Main {
     public static void main(String[] args) {
@@ -77,6 +79,7 @@ public final class Main {
         private boolean diagnostics;
         private int sceneIndex = -1;
         private String sceneName = "";
+        private Long generationSeed;
 
         Sandbox() {
             setPreferredSize(new Dimension(800, 600));
@@ -137,6 +140,7 @@ public final class Main {
                         case KeyEvent.VK_C -> resetWorld();
                         case KeyEvent.VK_F6 -> { if(session!=null) session.resume(); }
                         case KeyEvent.VK_F7 -> switchRockBlockSize();
+                        case KeyEvent.VK_F8 -> generateWorld();
                         case KeyEvent.VK_LEFT -> panLeft = true;
                         case KeyEvent.VK_RIGHT -> panRight = true;
                         case KeyEvent.VK_UP -> panUp = true;
@@ -191,7 +195,7 @@ public final class Main {
                     Renderer nextRenderer = new Java2DRenderer(loaded.width(), loaded.height());
                     if(session!=null) session.retire(); world = loaded; session=nextSession; fixed=nextFixed; control = nextControl; renderer = nextRenderer;
                     if(nextFixed!=null) rockBlockSizeCells=nextFixed.blocks().rockBlockSizeCells();
-                    structural = null; sceneIndex = -1; sceneName = ""; left=right=strokeStarted=false;
+                    structural = null; sceneIndex = -1; sceneName = ""; generationSeed=null; left=right=strokeStarted=false;
                     camera.reset();
                 }
             } catch (IOException e) {
@@ -209,7 +213,27 @@ public final class Main {
             var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
             if(paused) nextControl.togglePause();
             if(session!=null) session.retire(); world=nextWorld; structural=null; session=null; fixed=nextFixed; control=nextControl; renderer=nextRenderer;
-            sceneIndex=-1; sceneName=""; left=right=strokeStarted=false;
+            sceneIndex=-1; sceneName=""; generationSeed=null; left=right=strokeStarted=false;
+        }
+
+        private void generateWorld() {
+            timer.stop();
+            try {
+                if(JOptionPane.showConfirmDialog(this,"Replace the current scene with a generated world?", "Generate world",JOptionPane.YES_NO_OPTION)!=JOptionPane.YES_OPTION) return;
+                String text=JOptionPane.showInputDialog(this,"Seed (leave blank for random):", "Generate world",JOptionPane.QUESTION_MESSAGE);
+                Long seed=text==null?null:text.isBlank()?java.util.concurrent.ThreadLocalRandom.current().nextLong():Long.parseLong(text.trim());
+                var generated=WorldGenerator.prepare(seed==null?null:WorldGenerationConfig.preset(seed,rockBlockSizeCells));
+                if(generated==null) return;
+                var nextFixed=generated.session(); var nextWorld=nextFixed.world();
+                var nextControl=new SimulationControl(nextFixed::tick); nextControl.togglePause();
+                var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
+                if(session!=null) session.retire();
+                world=nextWorld; fixed=nextFixed; session=null; structural=null; control=nextControl; renderer=nextRenderer;
+                generationSeed=seed; sceneIndex=-1; sceneName=""; left=right=strokeStarted=false;
+                camera.reset(); camera.pan(0,Math.max(0,generated.config().baseSurfaceHeight()-getHeight()/(4.0*camera.zoom())));
+            } catch(IllegalArgumentException | IllegalStateException e) {
+                JOptionPane.showMessageDialog(this,e.getMessage(),"Generation failed",JOptionPane.ERROR_MESSAGE);
+            } finally { previous=System.nanoTime(); accumulator=0; timer.start(); requestFocusInWindow(); repaint(); }
         }
 
         private void switchRockBlockSize() {
@@ -250,7 +274,7 @@ public final class Main {
                 var nextControl=new SimulationControl(nextSession::tick); if(paused) nextControl.togglePause();
                 var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
                 if(session!=null) session.retire(); world=nextWorld; structural=nextStructural; session=nextSession; fixed=null; control=nextControl; renderer=nextRenderer;
-                sceneIndex = next; sceneName = scene.name();
+                sceneIndex = next; sceneName = scene.name(); generationSeed=null;
                 camera.reset(); camera.zoomAt(Camera2D.MAX_ZOOM,0,0);
                 camera.pan(-Math.max(0,(getWidth()/camera.zoom()-world.width())/2), -Math.max(0,(getHeight()/camera.zoom()-world.height())/2));
                 if(next==10) camera.pan(0,Math.max(0,world.height()-getHeight()/camera.zoom()));
@@ -324,7 +348,8 @@ public final class Main {
                 g.drawString(reason+" | F6 retry",8,67);
             } else g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
-            g.drawString(fixed!=null?"F3: diagnostics | F4: reference scene | F7: block size (clears scene)":"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: block size",8,101);
+            g.drawString(fixed!=null?"F3: diagnostics | F4: scene | F7: block size | F8: generate":"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: size | F8: generate",8,101);
+            if(generationSeed!=null) g.drawString("Generated seed: "+generationSeed, 8, getHeight()-8);
             if (diagnostics) {
                 if(fixed!=null) {
                     var b=fixed.blocks(); var list=b.blocks(); long falling=list.stream().filter(v->v.state()==miningsim.block.FixedBlockWorld.State.FALLING).count();

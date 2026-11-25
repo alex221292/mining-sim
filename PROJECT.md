@@ -14,6 +14,7 @@ Fixed-block session persistence: [M4.7](docs/m4-7-fixed-block-persistence.md).
 Save input synchronization and user acceptance of M4.7/M4.7.1: [M4.7.1](docs/m4-7-fixed-block-persistence.md).
 Fixed-block structural support, accepted by the user: [M4.8a](docs/m4-8a-block-support.md).
 Local horizontal support reset, accepted by the user: [M4.8a.1](docs/m4-8a-block-support.md).
+Deterministic procedural world generation and pending manual acceptance: [M5.1](docs/m5-1-world-generation.md).
 
 ## Vision
 
