@@ -43,7 +43,9 @@ class GeologicalLayersTest {
                 if(x%size!=0) assertEquals(WorldGenerator.layers(c,x-1),l);
                 for(int y=0;y<c.height();y++) {
                     var expected=y==c.height()-1?Material.BEDROCK:y<l.surface()?Material.AIR:y<l.surface()+l.soil()?Material.SOIL:y<l.surface()+l.soil()+l.sand()?Material.SAND:y<l.stoneTop()?Material.GRAVEL:Material.STONE;
-                    assertEquals(expected,a.world().get(x,y)); if(expected==Material.STONE) assertNotNull(a.blocks().blockAt(x,y));
+                    var actual=a.world().get(x,y);
+                    if(expected==Material.STONE && actual==Material.AIR) { assertTrue(y>=l.stoneTop()+CaveGenerator.MARGIN_CELLS); assertNull(a.blocks().blockAt(x,y)); }
+                    else { assertEquals(expected,actual); if(expected==Material.STONE) assertNotNull(a.blocks().blockAt(x,y)); }
                 }
             }
         }

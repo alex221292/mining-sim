@@ -17,6 +17,7 @@ Local horizontal support reset, accepted by the user: [M4.8a.1](docs/m4-8a-block
 Deterministic procedural world generation, accepted by the user: [M5.1](docs/m5-1-world-generation.md).
 Geological layers, accepted by the user: [M5.2](docs/m5-2-geological-layers.md).
 Geological diversity calibration, accepted by the user: [M5.2.1](docs/m5-2-geological-layers.md).
+Procedural caves and pending manual acceptance: [M5.3](docs/m5-3-procedural-caves.md).
 
 ## Vision
 

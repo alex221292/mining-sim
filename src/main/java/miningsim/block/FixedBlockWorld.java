@@ -44,6 +44,7 @@ public final class FixedBlockWorld {
     private final Map<Long,Entry> byCell=new HashMap<>();
     private long nextId=1,rejected,updateNanos,ticks,obstructed;
     private int waterAttempts,moved,maxVisits,maxChecks;
+    private java.util.Set<Long> hypotheticalRemoval=java.util.Set.of();
     private SupportDiagnostics supportDiagnostics=new SupportDiagnostics(0,0,0,0,0,0);
     public FixedBlockWorld(World world) { this(world,DEFAULT_BLOCK_SIZE); }
     public FixedBlockWorld(World world,int rockBlockSizeCells) {
@@ -227,7 +228,7 @@ public final class FixedBlockWorld {
         return false;
     }
     private Entry neighbour(int x,int y) {
-        return validArea(x,y)?byCell.get(key(x,y)):null;
+        return validArea(x,y) && !hypotheticalRemoval.contains(key(x,y))?byCell.get(key(x,y)):null;
     }
     private void relax(ArrayDeque<Entry> queue,Entry e,int distance,boolean vertical) {
         if(e==null || e.pinned || e.state==State.FALLING || distance>MAX_HORIZONTAL_SUPPORT_DISTANCE_CELLS || distance>=e.supportDistance) return;
@@ -238,7 +239,7 @@ public final class FixedBlockWorld {
     private void analyzeSupport(List<Entry> ordered) {
         long start=System.nanoTime(); int processed=0,contacts=0;
         var queue=new ArrayDeque<Entry>();
-        for(var e:ordered) { e.supportDistance=Integer.MAX_VALUE; if(!e.pinned && e.state==State.STATIC && isSupportSource(e)) { e.supportDistance=0; queue.addLast(e); } }
+        for(var e:ordered) { e.supportDistance=Integer.MAX_VALUE; if(!hypotheticalRemoval.contains(key(e.x,e.y)) && !e.pinned && e.state==State.STATIC && isSupportSource(e)) { e.supportDistance=0; queue.addLast(e); } }
         while(!queue.isEmpty()) {
             var e=queue.removeFirst(); processed++; int d=e.supportDistance,s=rockBlockSizeCells;
             var above=neighbour(e.x,e.y-s); var left=neighbour(e.x-s,e.y); var right=neighbour(e.x+s,e.y);
@@ -247,7 +248,21 @@ public final class FixedBlockWorld {
         }
         int supported=0,waiting=0;
         for(var e:ordered) { if(e.supportDistance!=Integer.MAX_VALUE) supported++; if(e.unsupportedTicks>0 && e.state==State.STATIC) waiting++; }
-        supportDiagnostics=new SupportDiagnostics(supported,ordered.size()-supported,waiting,System.nanoTime()-start,processed,contacts);
+        supportDiagnostics=new SupportDiagnostics(supported,ordered.size()-hypotheticalRemoval.size()-supported,waiting,System.nanoTime()-start,processed,contacts);
+    }
+    public record BlockPosition(int x,int y) { }
+    /** Hypothetical aligned removals; preserves live support diagnostics and advances no tick. */
+    public boolean supportedAfterRemoving(List<BlockPosition> positions) {
+        var removed=new HashSet<Long>();
+        for(var p:positions) {
+            if(p==null || !validArea(p.x(),p.y()) || snapX(p.x())!=p.x() || snapY(p.y())!=p.y() || !byCell.containsKey(key(p.x(),p.y())) || !removed.add(key(p.x(),p.y())))
+                throw new IllegalArgumentException("Invalid hypothetical block removal");
+        }
+        var ordered=new ArrayList<>(byCell.values()); ordered.sort(Comparator.<Entry>comparingInt(e->e.y).reversed().thenComparingLong(e->e.id));
+        int[] saved=new int[ordered.size()]; for(int i=0;i<saved.length;i++) saved[i]=ordered.get(i).supportDistance;
+        var old=supportDiagnostics;
+        try { hypotheticalRemoval=removed; analyzeSupport(ordered); return supportDiagnostics.unsupported()==0; }
+        finally { hypotheticalRemoval=java.util.Set.of(); supportDiagnostics=old; for(int i=0;i<saved.length;i++) ordered.get(i).supportDistance=saved[i]; }
     }
     /** One block-cell down per fixed tick, with bounded atomic water displacement. */
     public void step() {

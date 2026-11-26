@@ -8,7 +8,7 @@ import miningsim.world.World;
 /** Constructs an isolated fixed-block session; no UI, clock or ambient RNG is involved. */
 public final class WorldGenerator {
     private WorldGenerator() { }
-    public record Generated(FixedBlockSession session,WorldGenerationConfig config) { }
+    public record Generated(FixedBlockSession session,WorldGenerationConfig config,CaveGenerator.Stats caves) { }
     /** A canceled seed dialog prepares no scene; publication remains the caller's responsibility. */
     public static Generated prepare(WorldGenerationConfig config) { return config==null?null:generate(config); }
     private static double anchor(long seed,int index) {
@@ -63,8 +63,9 @@ public final class WorldGenerator {
                 if(world.set(x,y,material)!=World.Mutation.CHANGED) throw new IllegalStateException("Terrain layer placement failed");
             }
         }
+        var caves=CaveGenerator.carve(c,session.blocks());
         // Validate all ownership records before exposing the newly constructed session.
         new FixedBlockWorld(world,size).restoreState(session.blocks().saveState());
-        return new Generated(session,c);
+        return new Generated(session,c,caves);
     }
 }
