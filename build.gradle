@@ -196,3 +196,42 @@ tasks.register('naturalWaterCalibration', JavaExec) {
     mainClass = 'miningsim.benchmark.NaturalWaterCalibration'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+
+tasks.register('blockSupportBenchmark', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.BlockSupportBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
+// Compile only the two changed baseline classes over the current unchanged generation code.
+def baselineSources = layout.buildDirectory.dir('m54-parity-source')
+def baselineClasses = layout.buildDirectory.dir('m54-parity-classes')
+tasks.register('extractM54ParitySources') {
+    outputs.dir baselineSources
+    doLast {
+        ['miningsim/block/FixedBlockWorld.java', 'miningsim/persistence/FixedSessionIO.java'].each { name ->
+            def output = providers.exec { commandLine 'git', 'show', "de08c4d910d5327a5b448a37438cbfe3e4177055:src/main/java/${name}" }.standardOutput.asBytes.get()
+            def target = baselineSources.get().file(name).asFile
+            target.parentFile.mkdirs()
+            target.bytes = output
+        }
+    }
+}
+tasks.register('compileM54Parity', JavaCompile) {
+    dependsOn 'classes', 'extractM54ParitySources'
+    source = fileTree(baselineSources) { include '**/*.java' }
+    classpath = sourceSets.main.runtimeClasspath
+    destinationDirectory = baselineClasses
+    javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.register('generationParityProbe', JavaExec) {
+    dependsOn 'classes'
+    if (project.hasProperty('m54Baseline')) {
+        dependsOn 'compileM54Parity'
+        classpath = files(baselineClasses) + sourceSets.main.runtimeClasspath
+        args 'baseline'
+    } else classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.GenerationParityProbe'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}

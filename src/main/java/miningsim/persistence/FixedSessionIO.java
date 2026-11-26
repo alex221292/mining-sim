@@ -11,9 +11,15 @@ import miningsim.block.FixedBlockWorld;
 import miningsim.world.Material;
 import miningsim.world.World;
 
-/** MSIM v2 fixed-block sessions; v1 remains delegated to WorldIO. Streams remain caller-owned. */
+/** MSIM v3 fixed-block sessions; reads v2 and delegates v1 to WorldIO. Streams remain caller-owned. */
 public final class FixedSessionIO {
-    private static final int MAGIC=0x4d53494d, VERSION=2;
+    private static final int MAGIC=0x4d53494d, VERSION=3;
+    private static int rockCode(Material m) {
+        return switch(m) { case STONE -> 0; case GRANITE -> 1; case LIMESTONE -> 2; case MARBLE -> 3; default -> throw new IllegalArgumentException("Invalid rock material"); };
+    }
+    private static Material rockMaterial(int code) throws IOException {
+        return switch(code) { case 0 -> Material.STONE; case 1 -> Material.GRANITE; case 2 -> Material.LIMESTONE; case 3 -> Material.MARBLE; default -> throw new IOException("Invalid rock substance"); };
+    }
     public record Loaded(World world,FixedBlockSession fixed) { public boolean legacy() { return fixed==null; } }
     private FixedSessionIO() { }
     private static void dimensions(int w,int h) throws IOException {
@@ -34,7 +40,7 @@ public final class FixedSessionIO {
         for(int y=0;y<w.height();y++) for(int x=0;x<w.width();x++) out.writeByte(w.get(x,y).id());
         for(var b:saved.blocks()) {
             out.writeLong(b.id()); out.writeInt(b.x()); out.writeInt(b.y()); out.writeByte(b.state()==FixedBlockWorld.State.STATIC?0:1);
-            out.writeByte(b.unsupportedTicks()); out.writeByte(b.pinned()?1:0); out.writeByte(0); // STONE substance
+            out.writeByte(b.unsupportedTicks()); out.writeByte(b.pinned()?1:0); out.writeByte(rockCode(b.material()));
         }
         out.flush(); var raw=new DataOutputStream(output); raw.writeInt((int)crc.getValue()); raw.flush();
     }
@@ -57,7 +63,7 @@ public final class FixedSessionIO {
             if(header.readInt()!=MAGIC) throw new IOException("Invalid MSIM magic");
             int version=header.readInt(); input.reset();
             if(version==1) { var world=WorldIO.read(input); return new Loaded(world,null); }
-            if(version!=VERSION) throw new IOException("Unsupported MSIM version: "+version);
+            if(version!=2 && version!=VERSION) throw new IOException("Unsupported MSIM version: "+version);
             var crc=new CRC32(); var in=new DataInputStream(new CheckedInputStream(input,crc));
             in.readInt(); in.readInt(); int width=in.readInt(),height=in.readInt(),mode=in.readInt(),size=in.readInt(),count=in.readInt(); long nextId=in.readLong();
             dimensions(width,height);
@@ -67,6 +73,7 @@ public final class FixedSessionIO {
             var world=new World(width,height,World.Mode.BEDROCK_ENABLED);
             for(int y=0;y<height;y++) for(int x=0;x<width;x++) {
                 int id=in.readUnsignedByte(); Material material;
+                if(version==2 && id>7) throw new IOException("Invalid v2 material ID "+id);
                 try { material=Material.fromId((byte)id); } catch(IllegalArgumentException ex) { throw new IOException("Invalid material ID "+id,ex); }
                 if((y==height-1)!=(material==Material.BEDROCK)) throw new IOException("Invalid BEDROCK boundary");
                 if(material!=Material.AIR && material!=Material.BEDROCK) world.set(x,y,material);
@@ -74,8 +81,8 @@ public final class FixedSessionIO {
             var records=new ArrayList<FixedBlockWorld.SavedBlock>(count);
             for(int i=0;i<count;i++) {
                 long id=in.readLong(); int x=in.readInt(),y=in.readInt(),state=in.readUnsignedByte(),wait=in.readUnsignedByte(),pinned=in.readUnsignedByte(),substance=in.readUnsignedByte();
-                if(state>1 || pinned>1 || substance!=0) throw new IOException("Invalid block state or substance");
-                records.add(new FixedBlockWorld.SavedBlock(id,x,y,state==0?FixedBlockWorld.State.STATIC:FixedBlockWorld.State.FALLING,wait,pinned==1));
+                if(state>1 || pinned>1 || version==2 && substance!=0) throw new IOException("Invalid block state or substance");
+                records.add(new FixedBlockWorld.SavedBlock(id,x,y,state==0?FixedBlockWorld.State.STATIC:FixedBlockWorld.State.FALLING,wait,pinned==1,rockMaterial(substance)));
             }
             long actual=crc.getValue(); var raw=new DataInputStream(input); long expected=Integer.toUnsignedLong(raw.readInt());
             if(actual!=expected) throw new IOException("MSIM checksum mismatch");

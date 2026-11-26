@@ -10,7 +10,7 @@ import miningsim.world.Material;
 public final class BlockSupportBenchmark {
     public static void main(String[] args) throws Exception {
         System.out.println(System.getProperty("java.runtime.version")+"; warmup=20 samples=100; seed=12345");
-        for(int size:new int[]{8,4}) for(String scenario:new String[]{"static100","static1000","static5000","equal-area","beam","bridges","stepped","remove-support","water"}) {
+        for(int size:new int[]{8,4}) for(String scenario:new String[]{"static100","static1000","static5000","equal-area","beam","bridges","stepped","remove-support","water","mixed1000","mixed-water"}) {
             int count=switch(scenario) { case "static100" -> 100; case "static5000" -> 5000; case "equal-area" -> size==8?1000:4000; default -> 1000; };
             int width=800,height=401,columns=width/size;
             var s=new FixedBlockSession(new World(width,height,World.Mode.BEDROCK_ENABLED),12345,size);
@@ -27,10 +27,10 @@ public final class BlockSupportBenchmark {
                     for(int i=1;i<=4;i++) s.blocks().place(x+(i+1)*size,ground-2*size,false);
                 }
                 count=s.blocks().size();
-            } else if(scenario.equals("water")) {
+            } else if(scenario.equals("water") || scenario.equals("mixed-water")) {
                 count=10; for(int y=height-1-10*size;y<height-1;y++) for(int x=0;x<20*size;x++) s.world().set(x,y,Material.WATER);
-                for(int i=0;i<count;i++) s.blocks().place(i*2*size,height-1-13*size,false);
-            } else for(int i=0;i<count;i++) if(!s.blocks().place(i%columns*size,height-1-size-i/columns*size,false)) throw new IllegalStateException("fixture");
+                for(int i=0;i<count;i++) s.blocks().place(i*2*size,height-1-13*size,false,scenario.equals("mixed-water")?rock(i):Material.STONE);
+            } else for(int i=0;i<count;i++) if(!s.blocks().place(i%columns*size,height-1-size-i/columns*size,false,scenario.equals("mixed1000")?rock(i):Material.STONE)) throw new IllegalStateException("fixture");
             java.lang.reflect.Method diagnostic=null,analysis=null;
             try { diagnostic=s.blocks().getClass().getMethod("supportDiagnostics"); analysis=diagnostic.getReturnType().getMethod("analysisNanos"); } catch(NoSuchMethodException ignored) { }
             long[] ticks=new long[100],support=new long[100];
@@ -39,4 +39,5 @@ public final class BlockSupportBenchmark {
             System.out.printf(Locale.ROOT,"scenario=%s size=%d world=%dx%d blocks=%d full mean=%.3f p95=%.3f max=%.3f ms support mean=%.3f p95=%.3f ms%n",scenario,size,width,height,count,Arrays.stream(ticks).average().orElseThrow()/1e6,ticks[94]/1e6,ticks[99]/1e6,Arrays.stream(support).average().orElseThrow()/1e6,support[94]/1e6);
         }
     }
+    private static Material rock(int i) { return switch(i%4) { case 0 -> Material.STONE; case 1 -> Material.GRANITE; case 2 -> Material.LIMESTONE; default -> Material.MARBLE; }; }
 }

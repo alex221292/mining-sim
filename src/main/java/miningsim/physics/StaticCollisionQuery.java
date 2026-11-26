@@ -35,14 +35,14 @@ public final class StaticCollisionQuery {
 
     public static boolean solid(Material material) {
         return switch (Objects.requireNonNull(material)) {
-            case STONE, BEDROCK, WOOD, SAND, SOIL, GRAVEL -> true;
+            case STONE, GRANITE, LIMESTONE, MARBLE, BEDROCK, WOOD, SAND, SOIL, GRAVEL -> true;
             case AIR, WATER -> false;
         };
     }
     private boolean isSolid(Material material) {
         if(policy==MaterialPolicy.LEGACY) return solid(material);
         return switch(material) {
-            case STONE, BEDROCK, WOOD -> true;
+            case STONE, GRANITE, LIMESTONE, MARBLE, BEDROCK, WOOD -> true;
             case AIR, WATER, SAND, SOIL, GRAVEL -> false;
         };
     }

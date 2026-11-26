@@ -28,17 +28,21 @@ public final class FixedBlockSession {
     public void tick() { applyCommands(); blocks.step(); simulation.step(); cellularTicks++; }
     /** Rasterize a stroke segment in grid coordinates; points outside the world are ignored. */
     public void blockStroke(int x0,int y0,int x1,int y1,boolean erase) {
+        blockStroke(x0,y0,x1,y1,erase,Material.STONE);
+    }
+    public void blockStroke(int x0,int y0,int x1,int y1,boolean erase,Material material) {
         if(!world.contains(x0,y0) || !world.contains(x1,y1)) return;
         int x=blocks.snapX(x0),y=blocks.snapY(y0),endX=blocks.snapX(x1),endY=blocks.snapY(y1);
         int size=blocks.rockBlockSizeCells();
         int dx=Math.abs(endX-x)/size,dy=Math.abs(endY-y)/size,sx=x<endX?size:-size,sy=y<endY?size:-size,error=dx-dy;
         while(true) {
-            if(erase) blocks.removeAt(x,y); else blocks.place(x,y,true);
+            if(erase) blocks.removeAt(x,y); else blocks.place(x,y,true,material);
             if(x==endX && y==endY) break;
             int twice=2*error; if(twice>-dy) { error-=dy; x+=sx; } if(twice<dx) { error+=dx; y+=sy; }
         }
     }
     public void paintCells(int cx,int cy,int radius,Material material) {
+        if(material.isFixedRock()) throw new IllegalArgumentException("Rock must be placed as blocks");
         if(!world.contains(cx,cy)) return;
         for(int dy=-radius;dy<=radius;dy++) for(int dx=-radius;dx<=radius;dx++) {
             int x=cx+dx,y=cy+dy;

@@ -33,7 +33,8 @@ class SimulationInvariantsTest {
         assertThrows(IndexOutOfBoundsException.class, () -> w.set(0, 2, Material.AIR));
         assertThrows(NullPointerException.class, () -> w.set(0, 0, null));
         w.clear();
-        assertArrayEquals(new int[]{6, 0, 0, 0, 0, 0, 0, 0}, counts(w));
+        int[] cleared = new int[Material.values().length]; cleared[Material.AIR.ordinal()] = 6;
+        assertArrayEquals(cleared, counts(w));
     }
 
     @Test void waterFallsAndSandDoesNotMoveTwiceThroughAirOrWater() {

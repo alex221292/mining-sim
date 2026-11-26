@@ -16,7 +16,7 @@ public final class CellularDisplacementPlanner {
     public static Kind classify(Material material) {
         return switch (Objects.requireNonNull(material)) {
             case AIR -> Kind.EMPTY;
-            case STONE, BEDROCK, WOOD -> Kind.SOLID;
+            case STONE, GRANITE, LIMESTONE, MARBLE, BEDROCK, WOOD -> Kind.SOLID;
             case SAND, GRAVEL, SOIL, WATER -> Kind.DISPLACEABLE;
         };
     }

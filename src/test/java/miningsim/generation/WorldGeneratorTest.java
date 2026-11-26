@@ -11,6 +11,21 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class WorldGeneratorTest {
+    @Test void matchesM54BaselineCellFingerprints() throws Exception {
+        String[][] expected={
+            {"63718550959a99d60c3afde53594a91d0f7c0f487ebac21f60cd3b5cafd6f1be","a01f63ca1da77ba231ee1f128f42268eda9e033e5b95fcc1865e6fd2415e4726","66a4e49ec823396b9e1b2ed9f99b01c0bb789cf49c85cda3f417b382aaa51d9c"},
+            {"f4c9985e8f31226bf3f2fde70684263d4ebe88a582bc0e6d692e6a21630e0db0","b4f62df31933e3ce936ea801bb28c2c2f688d6da8225dabb54fca13cfa8eb50d","3bd5e429cde0fc29b02fed0ed32b3b426afea1d32d02c6988c71e222b3d5d759"}
+        };
+        int[] sizes={4,8}; long[] seeds={1,71,12345};
+        for(int i=0;i<sizes.length;i++) for(int j=0;j<seeds.length;j++) {
+            var c=new WorldGenerationConfig(seeds[j],128,129,sizes[i],48,16,32,8);
+            var w=WorldGenerator.generate(c).session().world(); var digest=java.security.MessageDigest.getInstance("SHA-256");
+            for(int y=0;y<w.height();y++) for(int x=0;x<w.width();x++) {
+                var m=w.get(x,y); assertFalse(m==Material.GRANITE || m==Material.LIMESTONE || m==Material.MARBLE); digest.update(m.id());
+            }
+            assertEquals(expected[i][j],java.util.HexFormat.of().formatHex(digest.digest()));
+        }
+    }
     private WorldGenerationConfig config(long seed,int size) { return new WorldGenerationConfig(seed,64,65,size,24,8,24,4); }
     private byte[] bytes(FixedBlockSession s) throws Exception { var out=new ByteArrayOutputStream(); FixedSessionIO.write(s,out); return out.toByteArray(); }
     private FixedBlockSession load(byte[] data) throws Exception { return FixedSessionIO.read(new ByteArrayInputStream(data)).fixed(); }

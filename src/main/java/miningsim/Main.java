@@ -132,6 +132,9 @@ public final class Main {
                         case KeyEvent.VK_4 -> brush = Material.WOOD;
                         case KeyEvent.VK_5 -> brush = Material.GRAVEL;
                         case KeyEvent.VK_6 -> brush = Material.SOIL;
+                        case KeyEvent.VK_7 -> { if(fixed!=null) brush = Material.GRANITE; }
+                        case KeyEvent.VK_8 -> { if(fixed!=null) brush = Material.LIMESTONE; }
+                        case KeyEvent.VK_9 -> { if(fixed!=null) brush = Material.MARBLE; }
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
                         case KeyEvent.VK_F3 -> { diagnostics = !diagnostics; var target=session; boolean enabled=diagnostics; if(target!=null) target.enqueue(()->target.enableProfiling(enabled)); }
@@ -289,11 +292,12 @@ public final class Main {
                 int ix=(int)Math.floor(x),iy=(int)Math.floor(y); if(!world.contains(ix,iy)) { strokeStarted=false; return; }
                 var target=fixed; var material=right?Material.AIR:brush;
                 int previousX=strokeStarted?strokeX:ix,previousY=strokeStarted?strokeY:iy; strokeX=ix; strokeY=iy; strokeStarted=true;
-                if(right || material==Material.STONE) target.enqueue(()->target.blockStroke(previousX,previousY,ix,iy,material==Material.AIR));
-                if(material!=Material.STONE) target.enqueue(()->target.paintCells(ix,iy,3,material));
+                if(right || material.isFixedRock()) target.enqueue(()->target.blockStroke(previousX,previousY,ix,iy,material==Material.AIR,material));
+                if(!material.isFixedRock()) target.enqueue(()->target.paintCells(ix,iy,3,material));
                 return;
             }
             var target=session; var material=right?Material.AIR:brush;
+            if(material.isFixedRock() && material!=Material.STONE) return;
             target.enqueue(()->Brush.paintWorld(target.world(),x,y,3,material,
                     target.isCoupled()?target.occupancy().snapshot():null));
         }
@@ -337,7 +341,7 @@ public final class Main {
             g.setStroke(new BasicStroke(1));
             g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 445 : 110);
             g.setColor(Color.WHITE);
-            g.drawString("1 Sand  2 Water  3 Stone  4 Wood  5 Gravel  6 Soil | Space Pause  N Step  C Clear", 8, 16);
+            g.drawString("1 Sand 2 Water 3 Stone 4 Wood 5 Gravel 6 Soil 7 Granite 8 Limestone 9 Marble", 8, 16);
             String runState=session!=null && session.blocked()?"BLOCKED":control.paused()?"PAUSED":session!=null && session.failure()!=null?"RETRYING":"RUNNING";
             g.drawString("Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells+(rockBlockSizeCells==4?" EXPERIMENTAL":""):world.mode()==World.Mode.LEGACY?" | LEGACY v1":"") + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
             var metrics = control.metrics();
@@ -346,7 +350,7 @@ public final class Main {
             if(session!=null && session.failure()!=null) {
                 String reason=session.failure(); if(reason.length()>85) reason=reason.substring(0,82)+"...";
                 g.drawString(reason+" | F6 retry",8,67);
-            } else g.drawString("Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
+            } else g.drawString("Space: pause | N: step | C: clear | Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
             g.drawString(fixed!=null?"F3: diagnostics | F4: scene | F7: block size | F8: generate":"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: size | F8: generate",8,101);
             if(generationSeed!=null) g.drawString("Generated seed: "+generationSeed, 8, getHeight()-8);
@@ -359,7 +363,7 @@ public final class Main {
                     var blocked=b.diagnostics().stream().filter(d->d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_DISPLACEMENT_BLOCKED || d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_SEARCH_BUDGET_EXCEEDED || d.reason()==miningsim.block.FixedBlockWorld.Reason.BLOCKED_BY_STONE || d.reason()==miningsim.block.FixedBlockWorld.Reason.INVALID_OR_STALE_PLAN).findFirst();
                     if(blocked.isPresent()) { var d=blocked.get(); g.drawString("Block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,152); }
                     var hovered=b.blockAt(hoverX,hoverY);
-                    if(hovered!=null) { var d=b.blockSupportAt(hoverX,hoverY); g.drawString("Cursor block "+d.id()+" | support "+d.supported()+" distance "+d.distanceCells()+" | "+d.state()+" wait "+d.remainingDelayTicks(),8,169); }
+                    if(hovered!=null) { var d=b.blockSupportAt(hoverX,hoverY); g.drawString("Cursor block "+d.id()+" "+hovered.substance()+" | support "+d.supported()+" distance "+d.distanceCells()+" | "+d.state()+" wait "+d.remainingDelayTicks(),8,169); }
                 } else {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {

@@ -20,6 +20,8 @@ Geological diversity calibration, accepted by the user: [M5.2.1](docs/m5-2-geolo
 Procedural caves with M5.3.1 branching morphology, accepted by the user: [M5.3 / M5.3.1](docs/m5-3-procedural-caves.md).
 Natural underground and surface water generation, visually accepted by the user: [M5.4](docs/m5-4-natural-water.md). The user positively assessed the water bodies and observed interaction of water, sand and the rock mass.
 
+M5.5a fixed-block rock identities and pending manual acceptance: [M5.5a](docs/m5-5a-rock-material-identity.md).
+
 ## Vision
 
 Mining Sim is a 2D side-view mining game inspired visually by Terraria and mechanically by falling-sand simulations. The long-term goal is an underground world in which excavation has physical consequences: sand collapses, water floods tunnels, different rocks behave differently, and wooden supports help stabilize excavations.
