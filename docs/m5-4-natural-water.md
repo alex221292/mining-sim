@@ -1,4 +1,4 @@
-# M5.4 — natural water bodies (experimental)
+# M5.4 — natural water bodies (visually accepted)
 
 Generation runs after caves and only replaces AIR with ordinary WATER. No simulation tick, source, persistent water-body object, pressure, infiltration, UI change or MSIM change is introduced. F8 still opens paused; the ordinary startup remains an empty sandbox. The water table and diagnostic counters are generation-only and are not serialized. Coordinates are cells with y increasing downward; one cell represents 0.1 m.
 
@@ -8,7 +8,11 @@ The independent surface channel samples depressions in the existing first-solid-
 
 The stage uses bounded grid scans and flood fills with O(width × height) temporary primitive-array storage; selected cave cells are visited at most twice. Generation is synchronous and can stall the UI. Existing block-water displacement uses a bounded destination search and can be blocked if destinations or its work budget are insufficient; an attempt is not necessarily a successful displacement.
 
-World Pre-Simulation and Dynamic World Activation remain future directions and are not part of this milestone. GUI inspection is performed by the user.
+World Pre-Simulation and Dynamic World Activation remain future directions and are not part of this milestone.
+
+## User visual acceptance
+
+The user visually inspected and accepted M5.4, positively assessing the generation of underground and surface water bodies and the observed interaction of water, sand and the rock mass. The user did not specifically confirm checks of both block sizes, save/load, or other individual scenarios. The agent did not perform the visual inspection.
 
 ## Verification
 
@@ -23,7 +27,7 @@ World Pre-Simulation and Dynamic World Activation remain future directions and a
 | 8 | 39 / 28 / 2 | 24 | 4/19 / 3/19 | 57,888 / 81,600 | 6,400 / 16,288 | 0 / 10,096 / 47,792 |
 | 4 | 26 / 37 / 3 | 24 | 4/19 / 1/19 | 110,112 / 92,872 | 13,756 / 24,276 | 0 / 17,320 / 92,792 |
 
-Selected seeds 5, 8, 431039, 357355 and 12345 were advanced 600 ticks for each block size; total material counts, block IDs and restored ownership validated. This does not require water to be stationary and is not exhaustive. Seed 8 includes a large 4×4 underground reservoir; 431039 has a large surface lake. For manual inspection try seed 0 for full and dry systems, 4 and 8 for large underground bodies, 431039 for surface lakes, and 357355 for known collapses. Open a reservoir into a lower excavation and check save/load manually in both block modes; no GUI acceptance is claimed.
+Selected seeds 5, 8, 431039, 357355 and 12345 were advanced 600 ticks for each block size; total material counts, block IDs and restored ownership validated. This does not require water to be stationary and is not exhaustive. Seed 8 includes a large 4×4 underground reservoir; 431039 has a large surface lake. For further manual inspection try seed 0 for full and dry systems, 4 and 8 for large underground bodies, 431039 for surface lakes, and 357355 for known collapses. Opening a reservoir into a lower excavation and checking save/load in both block modes remain separately unconfirmed manual scenarios.
 
 ## Exploratory timing
 
