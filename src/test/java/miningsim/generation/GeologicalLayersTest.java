@@ -46,7 +46,7 @@ class GeologicalLayersTest {
                     var actual=a.world().get(x,y);
                     if(expected==Material.STONE && (actual==Material.AIR || actual==Material.WATER)) { assertTrue(y>=l.stoneTop()+CaveGenerator.MARGIN_CELLS); assertNull(a.blocks().blockAt(x,y)); }
                     else if(expected==Material.AIR && actual==Material.WATER) { assertNull(a.blocks().blockAt(x,y)); }
-                    else { assertEquals(expected,actual); if(expected==Material.STONE) assertNotNull(a.blocks().blockAt(x,y)); }
+                    else { assertEquals(expected,actual.isFixedRock()?Material.STONE:actual); if(expected==Material.STONE) assertNotNull(a.blocks().blockAt(x,y)); }
                 }
             }
         }
@@ -78,11 +78,12 @@ class GeologicalLayersTest {
         for(int x=size;x<c.width()-size;x+=size) if(WorldGenerator.layers(c,x).sand()+WorldGenerator.layers(c,x).gravel()>=size) { column=x; break; }
         assertTrue(column>=0,"fixed seed must have a sediment layer");
         var layer=WorldGenerator.layers(c,column); int[] before=counts(s);
+        var removed=s.world().get(column,layer.stoneTop());
         assertTrue(s.blocks().removeAt(column,layer.stoneTop()));
         assertEquals(miningsim.world.World.Mutation.CHANGED,s.world().set(column+size/2,1,Material.WATER));
         for(int i=0;i<40;i++) s.tick(); int[] after=counts(s);
         for(var material:new Material[]{Material.SOIL,Material.SAND,Material.GRAVEL}) assertEquals(before[Byte.toUnsignedInt(material.id())],after[Byte.toUnsignedInt(material.id())]);
-        assertEquals(before[Byte.toUnsignedInt(Material.STONE.id())]-size*size,after[Byte.toUnsignedInt(Material.STONE.id())]);
+        assertEquals(before[Byte.toUnsignedInt(removed.id())]-size*size,after[Byte.toUnsignedInt(removed.id())]);
         assertEquals(before[Byte.toUnsignedInt(Material.WATER.id())]+1,after[Byte.toUnsignedInt(Material.WATER.id())]);
         boolean filled=false; for(int y=layer.stoneTop();y<layer.stoneTop()+size;y++) for(int x=column;x<column+size;x++) if(s.world().get(x,y)==Material.SAND || s.world().get(x,y)==Material.GRAVEL) filled=true;
         assertTrue(filled,"sediment must enter the excavated cavity");

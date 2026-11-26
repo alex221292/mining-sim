@@ -21,7 +21,7 @@ class WorldGeneratorTest {
             var c=new WorldGenerationConfig(seeds[j],128,129,sizes[i],48,16,32,8);
             var w=WorldGenerator.generate(c).session().world(); var digest=java.security.MessageDigest.getInstance("SHA-256");
             for(int y=0;y<w.height();y++) for(int x=0;x<w.width();x++) {
-                var m=w.get(x,y); assertFalse(m==Material.GRANITE || m==Material.LIMESTONE || m==Material.MARBLE); digest.update(m.id());
+                var m=w.get(x,y); digest.update(m.isFixedRock()?Material.STONE.id():m.id());
             }
             assertEquals(expected[i][j],java.util.HexFormat.of().formatHex(digest.digest()));
         }
@@ -55,8 +55,8 @@ class WorldGeneratorTest {
             var m=a.world().get(x,y); if(y==64) assertEquals(Material.BEDROCK,m);
             int surface=WorldGenerator.surface(c,x); assertTrue(surface>=c.baseSurfaceHeight()-c.terrainAmplitude()-size && surface<=c.baseSurfaceHeight()+c.terrainAmplitude()+size);
             var layers=WorldGenerator.layers(c,x);
-            if(y<64) { var expected=y<surface?Material.AIR:y<surface+layers.soil()?Material.SOIL:y<surface+layers.soil()+layers.sand()?Material.SAND:y<layers.stoneTop()?Material.GRAVEL:Material.STONE; if(expected==Material.AIR && m==Material.WATER) assertNull(a.blocks().blockAt(x,y)); else assertEquals(expected,m); }
-            if(m==Material.STONE) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } if(m==Material.SOIL) soil++; if(m==Material.AIR) air++;
+            if(y<64) { var expected=y<surface?Material.AIR:y<surface+layers.soil()?Material.SOIL:y<surface+layers.soil()+layers.sand()?Material.SAND:y<layers.stoneTop()?Material.GRAVEL:Material.STONE; if(expected==Material.AIR && m==Material.WATER) assertNull(a.blocks().blockAt(x,y)); else assertEquals(expected,m.isFixedRock()?Material.STONE:m); }
+            if(m.isFixedRock()) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } if(m==Material.SOIL) soil++; if(m==Material.AIR) air++;
         }
         assertEquals(a.blocks().size()*size*size,stone); assertTrue(soil>0); assertTrue(air>0);
         var state=a.blocks().saveState(); for(int i=0;i<600;i++) a.tick(); assertEquals(state,a.blocks().saveState());
@@ -83,7 +83,7 @@ class WorldGeneratorTest {
             if(t%500==0) {
                 byte[] snapshot=bytes(a); assertArrayEquals(snapshot,bytes(b)); a=load(snapshot); b=load(snapshot);
                 int stone=0; int[] counts=new int[Material.values().length];
-                for(int y=0;y<65;y++) for(int x=0;x<a.world().width();x++) { var m=a.world().get(x,y); counts[Byte.toUnsignedInt(m.id())]++; if(m==Material.STONE) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } }
+                for(int y=0;y<65;y++) for(int x=0;x<a.world().width();x++) { var m=a.world().get(x,y); counts[Byte.toUnsignedInt(m.id())]++; if(m.isFixedRock()) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } }
                 assertEquals(a.blocks().size()*size*size,stone); assertEquals(initial[Byte.toUnsignedInt(Material.SOIL.id())],counts[Byte.toUnsignedInt(Material.SOIL.id())]);
                 assertEquals(initial[Byte.toUnsignedInt(Material.GRAVEL.id())],counts[Byte.toUnsignedInt(Material.GRAVEL.id())]);
                 assertEquals(initial[Byte.toUnsignedInt(Material.SAND.id())]+(t>=1?1:0),counts[Byte.toUnsignedInt(Material.SAND.id())]); assertEquals(initial[Byte.toUnsignedInt(Material.WATER.id())]+(t>=1?1:0),counts[Byte.toUnsignedInt(Material.WATER.id())]);

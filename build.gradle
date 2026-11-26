@@ -197,6 +197,13 @@ tasks.register('naturalWaterCalibration', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
 
+tasks.register('rockGeologyCalibration', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.RockGeologyCalibration'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
 tasks.register('blockSupportBenchmark', JavaExec) {
     group = 'verification'
     classpath = sourceSets.main.runtimeClasspath

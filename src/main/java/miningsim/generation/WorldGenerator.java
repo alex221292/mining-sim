@@ -51,11 +51,12 @@ public final class WorldGenerator {
         var world=new World(c.width(),c.height(),World.Mode.BEDROCK_ENABLED);
         var session=new FixedBlockSession(world,12345,c.blockSize());
         int size=c.blockSize();
+        var geology=new RockGeology(c.seed());
         // Stable row-major block IDs, with an unbroken column down to BEDROCK.
         Layers[] layers=new Layers[c.width()/size];
         for(int col=0;col<layers.length;col++) layers[col]=layers(c,col*size);
         for(int y=0;y<c.height()-1;y+=size) for(int col=0;col<layers.length;col++)
-            if(y>=layers[col].stoneTop() && !session.blocks().place(col*size,y,false)) throw new IllegalStateException("Terrain block placement failed");
+            if(y>=layers[col].stoneTop() && !session.blocks().place(col*size,y,false,geology.sample(col*size+size*0.5,y+size*0.5))) throw new IllegalStateException("Terrain block placement failed");
         for(int x=0;x<c.width();x++) {
             var l=layers[x/size];
             for(int y=l.surface();y<l.stoneTop();y++) {
