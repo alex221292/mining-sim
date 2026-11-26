@@ -44,7 +44,8 @@ class GeologicalLayersTest {
                 for(int y=0;y<c.height();y++) {
                     var expected=y==c.height()-1?Material.BEDROCK:y<l.surface()?Material.AIR:y<l.surface()+l.soil()?Material.SOIL:y<l.surface()+l.soil()+l.sand()?Material.SAND:y<l.stoneTop()?Material.GRAVEL:Material.STONE;
                     var actual=a.world().get(x,y);
-                    if(expected==Material.STONE && actual==Material.AIR) { assertTrue(y>=l.stoneTop()+CaveGenerator.MARGIN_CELLS); assertNull(a.blocks().blockAt(x,y)); }
+                    if(expected==Material.STONE && (actual==Material.AIR || actual==Material.WATER)) { assertTrue(y>=l.stoneTop()+CaveGenerator.MARGIN_CELLS); assertNull(a.blocks().blockAt(x,y)); }
+                    else if(expected==Material.AIR && actual==Material.WATER) { assertNull(a.blocks().blockAt(x,y)); }
                     else { assertEquals(expected,actual); if(expected==Material.STONE) assertNotNull(a.blocks().blockAt(x,y)); }
                 }
             }
@@ -82,7 +83,7 @@ class GeologicalLayersTest {
         for(int i=0;i<40;i++) s.tick(); int[] after=counts(s);
         for(var material:new Material[]{Material.SOIL,Material.SAND,Material.GRAVEL}) assertEquals(before[Byte.toUnsignedInt(material.id())],after[Byte.toUnsignedInt(material.id())]);
         assertEquals(before[Byte.toUnsignedInt(Material.STONE.id())]-size*size,after[Byte.toUnsignedInt(Material.STONE.id())]);
-        assertEquals(1,after[Byte.toUnsignedInt(Material.WATER.id())]);
+        assertEquals(before[Byte.toUnsignedInt(Material.WATER.id())]+1,after[Byte.toUnsignedInt(Material.WATER.id())]);
         boolean filled=false; for(int y=layer.stoneTop();y<layer.stoneTop()+size;y++) for(int x=column;x<column+size;x++) if(s.world().get(x,y)==Material.SAND || s.world().get(x,y)==Material.GRAVEL) filled=true;
         assertTrue(filled,"sediment must enter the excavated cavity");
         byte[] edited=save(s); assertArrayEquals(edited,save(FixedSessionIO.read(new ByteArrayInputStream(edited)).fixed()));

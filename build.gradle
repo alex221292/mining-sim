@@ -181,3 +181,18 @@ tasks.register('persistenceBenchmark', JavaExec) {
     mainClass = 'miningsim.benchmark.PersistenceBenchmark'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+
+tasks.register('worldGenerationBenchmark', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.WorldGenerationBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    if (project.hasProperty('waterSeed')) args project.property('waterSeed')
+}
+
+tasks.register('naturalWaterCalibration', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.NaturalWaterCalibration'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}

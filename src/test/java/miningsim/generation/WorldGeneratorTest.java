@@ -40,7 +40,7 @@ class WorldGeneratorTest {
             var m=a.world().get(x,y); if(y==64) assertEquals(Material.BEDROCK,m);
             int surface=WorldGenerator.surface(c,x); assertTrue(surface>=c.baseSurfaceHeight()-c.terrainAmplitude()-size && surface<=c.baseSurfaceHeight()+c.terrainAmplitude()+size);
             var layers=WorldGenerator.layers(c,x);
-            if(y<64) assertEquals(y<surface?Material.AIR:y<surface+layers.soil()?Material.SOIL:y<surface+layers.soil()+layers.sand()?Material.SAND:y<layers.stoneTop()?Material.GRAVEL:Material.STONE,m);
+            if(y<64) { var expected=y<surface?Material.AIR:y<surface+layers.soil()?Material.SOIL:y<surface+layers.soil()+layers.sand()?Material.SAND:y<layers.stoneTop()?Material.GRAVEL:Material.STONE; if(expected==Material.AIR && m==Material.WATER) assertNull(a.blocks().blockAt(x,y)); else assertEquals(expected,m); }
             if(m==Material.STONE) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } if(m==Material.SOIL) soil++; if(m==Material.AIR) air++;
         }
         assertEquals(a.blocks().size()*size*size,stone); assertTrue(soil>0); assertTrue(air>0);
@@ -71,7 +71,7 @@ class WorldGeneratorTest {
                 for(int y=0;y<65;y++) for(int x=0;x<a.world().width();x++) { var m=a.world().get(x,y); counts[Byte.toUnsignedInt(m.id())]++; if(m==Material.STONE) { stone++; assertNotNull(a.blocks().blockAt(x,y)); } }
                 assertEquals(a.blocks().size()*size*size,stone); assertEquals(initial[Byte.toUnsignedInt(Material.SOIL.id())],counts[Byte.toUnsignedInt(Material.SOIL.id())]);
                 assertEquals(initial[Byte.toUnsignedInt(Material.GRAVEL.id())],counts[Byte.toUnsignedInt(Material.GRAVEL.id())]);
-                assertEquals(initial[Byte.toUnsignedInt(Material.SAND.id())]+(t>=1?1:0),counts[Byte.toUnsignedInt(Material.SAND.id())]); assertEquals(t>=1?1:0,counts[Byte.toUnsignedInt(Material.WATER.id())]);
+                assertEquals(initial[Byte.toUnsignedInt(Material.SAND.id())]+(t>=1?1:0),counts[Byte.toUnsignedInt(Material.SAND.id())]); assertEquals(initial[Byte.toUnsignedInt(Material.WATER.id())]+(t>=1?1:0),counts[Byte.toUnsignedInt(Material.WATER.id())]);
                 assertEquals(initialBlocks-(t>=50?1:0)+(t>=100?8/size+1:0),a.blocks().size());
             }
         }

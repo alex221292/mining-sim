@@ -18,6 +18,7 @@ Deterministic procedural world generation, accepted by the user: [M5.1](docs/m5-
 Geological layers, accepted by the user: [M5.2](docs/m5-2-geological-layers.md).
 Geological diversity calibration, accepted by the user: [M5.2.1](docs/m5-2-geological-layers.md).
 Procedural caves with M5.3.1 branching morphology, accepted by the user: [M5.3 / M5.3.1](docs/m5-3-procedural-caves.md).
+Experimental natural water generation, pending manual acceptance: [M5.4](docs/m5-4-natural-water.md).
 
 ## Vision
 
