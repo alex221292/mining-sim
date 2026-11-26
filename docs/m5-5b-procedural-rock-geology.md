@@ -1,4 +1,6 @@
-# M5.5b — procedural rock geology
+# M5.5b — procedural rock geology (accepted)
+
+The user visually accepted the diversity of formations, rock boundaries, local inclusions and the interaction of geology with existing caves and water bodies. Screenshots were supplied for seeds 431039 and 357355 at 4×4. The user did not explicitly confirm individual checks of 8×8, resuming collapses, excavation near water, or save/load; those scenarios must not be reported as passed. The agent did not run the GUI.
 
 F8 creates a paused world with rock identities sampled during the original row-major block placement, before the unchanged cave and natural-water stages. Ordinary startup remains empty. Each whole 4×4 or 8×8 block samples the field at its centre in world cells, and is placed using the existing material-aware fixed-block API. IDs, ownership and the no-hidden-tick contract are unchanged. A separate seed channel (`seed ^ 0x5cb46a19e2d783f1`) feeds coordinate-hashed, smooth bilinear value noise; no existing random stream is consumed. The brush is not an input to generation. One cell is 0.1 m, y increases downwards.
 
@@ -25,6 +27,8 @@ STONE is the background. GRANITE thresholds a weighted 180/85-cell noise field w
 
 For 8×8, granite ranges 5.99–70.97%, limestone 7.80–27.39%, marble 0.08–6.76%. Seed 2's largest granite component is 1,709 blocks (99.7% of its granite); seed 8's largest limestone component is 334 blocks (96.5%). Seed 4 has a marble component of 81 blocks, but also six marble components of at most four blocks: tiny remnants do occur. Seed 5 has only two marble blocks at 8×8. All sampled worlds have some marble, so the sample does not demonstrate a marble-free world. No minimum-component filter or forced material presence is used. Statistics do not establish visual quality.
 
+The calibrated distributions for both block sizes are close. Marble appearing in all 19 sampled worlds and small isolated inclusions do not require further calibration at this stage. Individual rock strengths remain a task for M5.5c.
+
 ## Exploratory performance
 
 `gradlew.bat worldGenerationBenchmark`, Windows, Corretto 25.0.5+10, 800×401, seed 12345; two generation warmups and ten runs, then first tick, 120 early ticks and 20 warmup/100 late ticks. Milliseconds mean/p95/max:
@@ -34,8 +38,8 @@ For 8×8, granite ranges 5.99–70.97%, limestone 7.80–27.39%, marble 0.08–6
 | 8 | 15.280/37.410/37.410 | 23.910 | 4.406/6.784/12.096 | 3.867/4.429/4.778 |
 | 4 | 12.806/18.374/18.374 | 7.391 | 4.151/5.805/6.211 | 3.809/4.029/4.439 |
 
-Field sampling is inline with placement and was not timed separately. The historical M5.4 generation means were 12.956/11.259 ms for sizes 8/4; historical late means were 1.875/3.763 ms. The present 8×8 late result is notably higher; different runs, JVM warmup and OS noise prevent attribution. These are not controlled M5.5a comparisons or performance guarantees.
+Field sampling is inline with placement and was not timed separately. The historical M5.4 generation means were 12.956/11.259 ms for sizes 8/4; historical late means were 1.875/3.763 ms. The present 8×8 late result is notably higher; different runs, JVM warmup and OS noise prevent attribution, and the reason for the difference has not been established. These are not controlled M5.5a comparisons or performance guarantees.
 
-## User-only manual acceptance
+## Additional user-only manual checks
 
-Suggested seeds 2 (granite-dominant), 4 and 8 (substantial marble), 13 (stone/limestone), 12345 and 357355 (known water/collapse scenarios) are selected by headless statistics, **not visually verified**. Generate several seeds, inspect varied formations, layers, inclusions, boundaries and rock-surface outcrops, and caves crossing materials. Resume and observe natural collapses; excavate mixed rock near water; save and load. Repeat the main checks for both F7 block sizes. F3, brushes and controls are unchanged. World pre-simulation and dynamic activation remain future work.
+Suggested seeds 2 (granite-dominant), 4 and 8 (substantial marble), 13 (stone/limestone), 12345 and 357355 (known water/collapse scenarios) were selected by headless statistics; of these, the user supplied a 4×4 screenshot for 357355 only. Additional checks can include resuming natural collapses, excavating mixed rock near water, save/load and repeating the main checks in 8×8. F3, brushes and controls are unchanged. World pre-simulation and dynamic activation remain future work.

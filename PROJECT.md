@@ -22,7 +22,7 @@ Natural underground and surface water generation, visually accepted by the user:
 
 M5.5a fixed-block rock identities, accepted by the user: [M5.5a](docs/m5-5a-rock-material-identity.md). All manual cases passed; equal horizontal support distance for all rocks is expected at this stage. Individual strengths are planned separately for M5.5c.
 
-Procedural rock geology, pending user visual acceptance: [M5.5b](docs/m5-5b-procedural-rock-geology.md). Seeded correlated fields assign fixed-block rock identity without changing terrain geometry or MSIM v3; individual strength is not implemented.
+Procedural rock geology, visually accepted by the user: [M5.5b](docs/m5-5b-procedural-rock-geology.md). Seeded correlated fields assign fixed-block rock identity without changing terrain geometry or MSIM v3. Individual rock strength remains a task for M5.5c.
 
 ## Vision
 
