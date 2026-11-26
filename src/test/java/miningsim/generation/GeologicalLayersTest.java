@@ -64,7 +64,7 @@ class GeologicalLayersTest {
             var blocks=s.blocks().saveState(); var total=counts(s); byte[] first=save(s);
             assertArrayEquals(first,save(FixedSessionIO.read(new ByteArrayInputStream(first)).fixed()));
             for(int tick=0;tick<600;tick++) s.tick();
-            assertEquals(blocks,s.blocks().saveState()); assertArrayEquals(total,counts(s));
+            assertEquals(blocks.blocks().stream().map(miningsim.block.FixedBlockWorld.SavedBlock::id).toList(),s.blocks().saveState().blocks().stream().map(miningsim.block.FixedBlockWorld.SavedBlock::id).toList()); assertArrayEquals(total,counts(s));
             byte[] settled=save(s); s=FixedSessionIO.read(new ByteArrayInputStream(settled)).fixed(); assertArrayEquals(settled,save(s));
             assertTrue(s.blocks().removeAt(0,128-size)); s.tick();
             s.world().set(120,1,Material.WATER); for(int tick=0;tick<30;tick++) s.tick();

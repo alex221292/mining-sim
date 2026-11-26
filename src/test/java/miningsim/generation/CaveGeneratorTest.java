@@ -17,12 +17,13 @@ class CaveGeneratorTest {
     @ParameterizedTest @ValueSource(ints={4,8}) void generatedCavesAreOwnedStableAndDeterministic(int size) throws Exception {
         var c=WorldGenerationConfig.preset(12345,size); var a=WorldGenerator.generate(c); var b=WorldGenerator.generate(c);
         assertTrue(a.caves().accepted()>0); assertEquals(0,a.session().cellularTicks()); assertArrayEquals(save(a.session()),save(b.session()));
+        assertTrue(a.caves().candidates()<=CaveGenerator.MAX_CANDIDATES); assertTrue(a.caves().branchedSystems()>0);
         int air=0;
         for(int y=0;y<c.height()-1;y++) for(int x=0;x<c.width();x++) {
             var layer=WorldGenerator.layers(c,x); var m=a.session().world().get(x,y);
             if(y>=layer.stoneTop() && m==Material.AIR) { air++; assertNull(a.session().blocks().blockAt(x,y)); assertTrue(y>=layer.stoneTop()+16); assertTrue(x>=16 && x<c.width()-16); assertTrue(y<c.height()-1-16); }
         }
-        assertEquals(a.caves().blocksRemoved()*size*size,air); assertTrue(a.session().blocks().supportedAfterRemoving(List.of()));
+        assertEquals(a.caves().blocksRemoved()*size*size,air); assertEquals(0,a.caves().supportRejected());
         int cols=c.width()/size,rows=(c.height()-1)/size,components=0; boolean[] seen=new boolean[cols*rows];
         for(int y=0;y<rows;y++) for(int x=0;x<cols;x++) {
             int index=y*cols+x; if(seen[index] || y*size<WorldGenerator.layers(c,x*size).stoneTop() || a.session().world().get(x*size,y*size)!=Material.AIR) continue;
@@ -32,9 +33,9 @@ class CaveGeneratorTest {
                     if(!seen[n] && ny*size>=WorldGenerator.layers(c,nx*size).stoneTop() && a.session().world().get(nx*size,ny*size)==Material.AIR) { seen[n]=true; queue.add(n); }
                 }
             }
-            assertTrue(count>=2);
+            assertTrue(count>=4,"clipping must not leave small isolated remnants");
         }
-        assertEquals(a.caves().accepted(),components);
+        assertTrue(components>0); assertTrue(components<=a.caves().blocksRemoved());
         byte[] saved=save(a.session()); var loaded=FixedSessionIO.read(new ByteArrayInputStream(saved)).fixed(); assertArrayEquals(saved,save(loaded));
     }
     @ParameterizedTest @ValueSource(ints={4,8}) void hypotheticalSupportCheckLeavesStateUnchanged(int size) {
@@ -52,7 +53,7 @@ class CaveGeneratorTest {
     @ParameterizedTest @ValueSource(ints={4,8}) void replayAndStabilityForCompactCaves(int size) throws Exception {
         var c=new WorldGenerationConfig(12345,256,201,size,64,16,32,8);
         var generated=WorldGenerator.generate(c); assertTrue(generated.caves().accepted()>0);
-        var a=generated.session(); var b=WorldGenerator.generate(c).session(); var initial=a.blocks().saveState();
+        var a=generated.session(); var b=WorldGenerator.generate(c).session(); int initialBlocks=a.blocks().size();
         for(int tick=0;tick<10000;tick++) {
             for(var s:List.of(a,b)) {
                 if(tick==700) s.enqueue(()->s.paintCells(240,1,0,Material.WATER));
@@ -61,15 +62,51 @@ class CaveGeneratorTest {
                 if(tick==1101) s.enqueue(()->s.blocks().releaseStroke());
             }
             a.tick(); b.tick();
-            if(tick==599) assertEquals(initial,a.blocks().saveState());
+            if(tick==599) assertEquals(initialBlocks,a.blocks().size());
             if(tick%500==0) { byte[] snapshot=save(a); assertArrayEquals(snapshot,save(b)); a=FixedSessionIO.read(new ByteArrayInputStream(snapshot)).fixed(); b=FixedSessionIO.read(new ByteArrayInputStream(snapshot)).fixed(); }
         }
         assertArrayEquals(save(a),save(b));
     }
-    @ParameterizedTest @ValueSource(ints={4,8}) void multipleSeedsKeepRockStable(int size) {
+    @ParameterizedTest @ValueSource(ints={4,8}) void deterministicMorphologyVariesBySeed(int size) throws Exception {
+        var first=WorldGenerator.generate(WorldGenerationConfig.preset(431039,size));
+        var other=WorldGenerator.generate(WorldGenerationConfig.preset(357355,size));
+        assertTrue(first.caves().accepted()>0); assertTrue(other.caves().accepted()>0);
+        assertFalse(java.util.Arrays.equals(save(first.session()),save(other.session())));
+        assertArrayEquals(save(first.session()),save(WorldGenerator.generate(WorldGenerationConfig.preset(431039,size)).session()));
+    }
+    @ParameterizedTest @ValueSource(ints={4,8}) void separateWalksCanJoinIntoOneCave(int size) {
+        var c=WorldGenerationConfig.preset(357355,size); var g=WorldGenerator.generate(c); int cols=c.width()/size,rows=(c.height()-1)/size;
+        boolean[] cave=new boolean[cols*rows],seen=new boolean[cave.length]; int components=0;
+        for(int y=0;y<rows;y++) for(int x=0;x<cols;x++) cave[y*cols+x]=y*size>=WorldGenerator.layers(c,x*size).stoneTop() && g.session().world().get(x*size,y*size)==Material.AIR;
+        for(int p=0;p<cave.length;p++) if(cave[p] && !seen[p]) {
+            components++; var q=new java.util.ArrayDeque<Integer>(); q.add(p); seen[p]=true;
+            while(!q.isEmpty()) { int cell=q.removeFirst(),x=cell%cols,y=cell/cols;
+                for(int[] d:new int[][]{{-1,0},{1,0},{0,-1},{0,1}}) { int nx=x+d[0],ny=y+d[1]; if(nx<0 || nx>=cols || ny<0 || ny>=rows) continue; int n=ny*cols+nx;
+                    if(cave[n] && !seen[n]) { seen[n]=true; q.add(n); }
+                }
+            }
+        }
+        assertTrue(g.caves().branchedSystems()>0); assertTrue(components<g.caves().accepted());
+    }
+    @ParameterizedTest @ValueSource(ints={4,8}) void generatedUnsupportedRockUsesExistingFallDelay(int size) {
+        var s=WorldGenerator.generate(WorldGenerationConfig.preset(12345,size)).session();
+        assertFalse(s.blocks().supportedAfterRemoving(List.of()));
+        var before=s.blocks().blocks();
+        for(int i=0;i<FixedBlockWorld.FALL_DELAY_TICKS;i++) {
+            s.tick(); var current=s.blocks().blocks();
+            for(int j=0;j<before.size();j++) assertEquals(before.get(j).y(),current.get(j).y());
+        }
+        s.tick(); var after=s.blocks().blocks(); boolean moved=false;
+        for(int j=0;j<before.size();j++) moved|=before.get(j).y()!=after.get(j).y();
+        assertTrue(moved,"unsupported generated rock should begin falling on the ninth tick");
+    }
+    @ParameterizedTest @ValueSource(ints={4,8}) void multipleSeedsPreserveRockDuringSettling(int size) throws Exception {
         for(int seed:new int[]{1,357355}) {
             var g=WorldGenerator.generate(new WorldGenerationConfig(seed,256,201,size,64,16,32,8));
-            var before=g.session().blocks().saveState(); for(int i=0;i<600;i++) g.session().tick(); assertEquals(before,g.session().blocks().saveState());
+            var before=g.session().blocks().blocks().stream().map(FixedBlockWorld.Block::id).sorted().toList();
+            for(int i=0;i<600;i++) g.session().tick();
+            assertEquals(before,g.session().blocks().blocks().stream().map(FixedBlockWorld.Block::id).sorted().toList());
+            byte[] state=save(g.session()); assertArrayEquals(state,save(FixedSessionIO.read(new ByteArrayInputStream(state)).fixed()));
         }
     }
     @ParameterizedTest @ValueSource(ints={4,8}) void waterCanEnterOpenedCave(int size) {
