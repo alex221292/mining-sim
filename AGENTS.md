@@ -68,6 +68,17 @@ If the user explicitly requests a review, plan, explanation, or a single small c
 - Report only commands actually executed and their actual results. If GUI verification is unavailable, state that explicitly.
 - Do not change the JDK, Gradle version, major dependencies, or build system merely to bypass a local environment problem.
 
+### Local Java environment
+
+The user's system `JAVA_HOME` intentionally points to Java 8. The installed JDK 25 is `C:\Users\alexe\.jdks\corretto-25.0.5`. Before each Gradle command in an independent PowerShell process, set only that process's environment:
+
+```powershell
+$env:JAVA_HOME = 'C:\Users\alexe\.jdks\corretto-25.0.5'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+```
+
+Do not search for other JDKs when this path is available, install another JDK, use `setx`, or modify persistent user/system environment variables, global Gradle settings, or IDE settings. Do not put this local absolute path in production code or portable build configuration. Run benchmarks only through Gradle tasks.
+
 ## Architecture boundaries
 
 - Keep **World and material storage**, **cellular simulation**, **structural analysis**, **rigid-body simulation**, **rendering**, and **input/application orchestration** separate.
@@ -79,6 +90,7 @@ If the user explicitly requests a review, plan, explanation, or a single small c
 - Do not introduce Spring, Guice, reflection-based DI, ORM, a generic ECS, an event bus, networking, or a general-purpose physics engine without explicit approval.
 - Favor narrow, comprehensible APIs over speculative frameworks. Avoid unrelated refactoring in a milestone commit.
 - Keep source code, identifiers, and code comments in English. User-facing explanations may be in Russian.
+- The current rock architecture uses fixed square blocks; a return to arbitrary-geometry rigid bodies is not planned. Future mining may convert blocks into same-substance GRIT cells using existing granular physics. FRAGMENT is not a planned physical form; ITEM is an inventory representation, not a physical body. Neither GRIT nor ITEM is implemented by this instruction. Do not integrate historical rigid-body or fragment work into the new architecture and do not delete it.
 
 ## Simulation invariants
 
@@ -92,7 +104,9 @@ If the user explicitly requests a review, plan, explanation, or a single small c
 - Keep determinism independent of rendering, camera position, frame rate, hash-map iteration order, and wall-clock scheduling.
 - Prefer stable IDs and deterministic iteration/contact ordering where simulation outcomes depend on ordering.
 
-## Structural rock and fragment contracts
+## Historical structural rock and fragment contracts
+
+These contracts apply when maintaining the historical code; they do not authorize integrating it into the current fixed-block architecture.
 
 - `RockConnectivity` owns the rock-bond topology and its `World.ChangeSink` integration. Do not install competing listeners or bypass its authoritative bond-breaking API.
 - Respect topology revision, bond incarnation, pending-state, and damage invalidation contracts. Do not consume stale structural snapshots as if they were current.

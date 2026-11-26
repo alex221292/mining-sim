@@ -34,3 +34,5 @@ The 8×8 mixed static result is higher in this run; no controlled attribution or
 ## Manual acceptance (user only)
 
 For each block size draw all four rocks, inspect colors and outlines, build a mixed construction and remove its support, drop rocks into water, inspect F3, and save/load the scene. Check F8 still generates the usual STONE world. The agent did not launch the GUI.
+
+The user completed all manual cases successfully and accepted M5.5a. Equal horizontal support distance for all four rocks is expected in M5.5a; individual rock strengths are planned separately for M5.5c.

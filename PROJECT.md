@@ -20,7 +20,7 @@ Geological diversity calibration, accepted by the user: [M5.2.1](docs/m5-2-geolo
 Procedural caves with M5.3.1 branching morphology, accepted by the user: [M5.3 / M5.3.1](docs/m5-3-procedural-caves.md).
 Natural underground and surface water generation, visually accepted by the user: [M5.4](docs/m5-4-natural-water.md). The user positively assessed the water bodies and observed interaction of water, sand and the rock mass.
 
-M5.5a fixed-block rock identities and pending manual acceptance: [M5.5a](docs/m5-5a-rock-material-identity.md).
+M5.5a fixed-block rock identities, accepted by the user: [M5.5a](docs/m5-5a-rock-material-identity.md). All manual cases passed; equal horizontal support distance for all rocks is expected at this stage. Individual strengths are planned separately for M5.5c.
 
 ## Vision
 
@@ -202,7 +202,7 @@ Progression, equipment, hazards, water management, material-specific mining, inv
 ## Open design questions
 
 - One cell represents 10 cm; adaptive structural elements remain a future optimization, not a different cell scale.
-- Detached rock becomes coherent rigid fragments; impact fracture and collision details remain open.
+- Fixed square blocks are the primary physical form of rock. A return to arbitrary-geometry rigid bodies is not planned. Future mining is intended to convert a block into same-substance GRIT cells using the existing granular physics; FRAGMENT is not a planned physical form, and ITEM is an inventory representation, not a physical body. Historical rigid-body and fragment work remains in the repository but must not be integrated into the new architecture or deleted. GRIT, inventory representation and mining are not implemented by M5.5a.
 - How should water volume and pressure be approximated at different scales?
 - What performance target is appropriate for active simulation cells on the target hardware?
 
