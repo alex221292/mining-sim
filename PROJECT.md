@@ -17,8 +17,7 @@ Local horizontal support reset, accepted by the user: [M4.8a.1](docs/m4-8a-block
 Deterministic procedural world generation, accepted by the user: [M5.1](docs/m5-1-world-generation.md).
 Geological layers, accepted by the user: [M5.2](docs/m5-2-geological-layers.md).
 Geological diversity calibration, accepted by the user: [M5.2.1](docs/m5-2-geological-layers.md).
-Procedural caves and pending manual acceptance: [M5.3](docs/m5-3-procedural-caves.md).
-Branching cave morphology and pending visual acceptance: [M5.3.1](docs/m5-3-procedural-caves.md).
+Procedural caves with M5.3.1 branching morphology, accepted by the user: [M5.3 / M5.3.1](docs/m5-3-procedural-caves.md).
 
 ## Vision
 
@@ -126,6 +125,12 @@ The render abstraction should be small. A future OpenGL implementation may uploa
 Use a fixed simulation timestep with an accumulator and a maximum number of catch-up steps per rendered frame. Keep Swing/AWT event handling and simulation mutation coordinated to avoid data races. The initial implementation may be single-threaded except for AWT event dispatch, provided input is safely transferred to the simulation loop.
 
 ## Roadmap
+
+### Future architectural directions (not implemented or assigned milestone numbers)
+
+**World Pre-Simulation:** Generate the entire finite world, then run a global headless physical simulation to settle unstable rock, granular materials and water. Freeze the resulting initial world state, choose a safe player spawn and begin gameplay. This stage is not restricted to the visible region or real-time 60 TPS. Define stabilization criteria and a bounded compute budget; use existing physics without cave-specific rules.
+
+**Dynamic World Activation:** During gameplay distinguish the visible region, a physically active area around the player, a neighboring chunk preload buffer, and inactive regions whose state is preserved. Activate regions when disturbances propagate, including collapses, granular movement and water flows. Active-region boundaries must not become artificial physical barriers or supports. These are future directions, not current-stage requirements.
 
 ### M1 — Interactive materials sandbox
 

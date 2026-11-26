@@ -55,6 +55,7 @@ If the user explicitly requests a review, plan, explanation, or a single small c
 - Never independently delete user files, IDE settings, caches, or build outputs.
 - Never independently launch GUI or interactive applications on the user's machine.
 - Run headless tests and benchmarks only when explicitly authorized by the active task.
+- Run authorized headless benchmarks through the corresponding Gradle tasks only. Directly launching a Java Main via `java.exe` is forbidden, even for headless benchmarks.
 - Manual GUI acceptance is performed by the user.
 - Write all agent reports in Russian.
 
