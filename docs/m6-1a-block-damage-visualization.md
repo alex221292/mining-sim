@@ -4,7 +4,9 @@ Mining work remains the sole source of mining damage, keyed by stable block ID. 
 
 `BlockDamage` contains graphics-independent immutable line segments in normalized 0–100 coordinates, each tagged with its first visible stage. A stage includes all earlier segments. The common pattern is independent of rock type and may also be consumed by a future GPU texture atlas or structural-fatigue visualization; structural damage is not implemented or combined with mining. Work 0 maps to stage 0; otherwise stage is max(1, floor(10 × work / required)), using long arithmetic; 100% is stage 10.
 
-Java2D `BlockDamageMasks` rasterizes eleven transparent 128×128 images once per sandbox and reuses them for every block and zoom. World pixels are followed by F9 ore overlay, cracks, block outlines, other diagnostic overlays and HUD/progress bar. The existing visible-block traversal is reused; no separate world scan or per-block image is created. Images scale with the camera; very small blocks may lose detail naturally, without an explicit cutoff. The pattern is fixed, without rotations or variants. Visual appearance, F9 readability and FPS await user acceptance; no GPU backend or structural effects were added.
+Java2D `BlockDamageMasks` rasterizes eleven transparent 128×128 images once per sandbox and reuses them for every block and zoom. World pixels are followed by F9 ore overlay, cracks, block outlines, other diagnostic overlays and HUD/progress bar. The existing visible-block traversal is reused; no separate world scan or per-block image is created. Images scale with the camera; very small blocks may lose detail naturally, without an explicit cutoff. The pattern is fixed, without rotations or variants. The user accepted the visual result; F9 readability and FPS were not separately confirmed. No GPU backend or structural effects were added.
+
+Future warning dust is purely visual and creates no physical mass; it is distinct from physical rock grit. Mining progress and future structural damage remain independent. The next stage is M6.2 — Physical Extraction & Rock Grit; it has not been started.
 
 ## Verification
 
@@ -19,7 +21,11 @@ Windows Corretto 25.0.5+10: focused `gradlew.bat test --tests 'miningsim.render.
 
 Single uncontrolled headless run without active mining; concurrent build may affect results. It does not measure rendering, mask preparation or FPS and is not a regression proof.
 
-## Manual acceptance (pending)
+## User visual acceptance
+
+The user confirmed that the damage visualization works and accepted its appearance. The provided screenshots show different crack stages on both 4×4 and 8×8 blocks in generated worlds. No further template calibration is required. The user did not report completion of each individual scenario below; they remain available as suggested checks rather than a list of confirmed passes.
+
+## Suggested manual checks
 
 1. Mine all four rocks and observe progressive cracks.
 2. Stop and resume; partially damage multiple blocks and switch targets.

@@ -30,7 +30,9 @@ M5.6a multi-component ore content was manually accepted by the user: [M5.6a](doc
 
 M5.6b procedural ore deposits and the F9 diagnostic overlay were manually accepted by the user: [M5.6b](docs/m5-6b-procedural-ore-deposits.md). The user checked generated worlds at both block sizes, positively assessed the deposits and procedural generation, and found the 4×4 deposits even more interesting.
 
-M6.1 fixed-block mining interaction was manually accepted by the user: all eight proposed checks passed, including rock resistance and F3, both block sizes, interruption and target switching, pause and single-step, multicomponent ore and F9, conservation on completion, save/load and existing brushes and generation: [M6.1](docs/m6-1-mining-interaction.md). The next agreed stage is M6.1a — Block Damage Visualization; M6.2 will address Rock Grit & Material Conservation.
+M6.1 fixed-block mining interaction was manually accepted by the user: all eight proposed checks passed, including rock resistance and F3, both block sizes, interruption and target switching, pause and single-step, multicomponent ore and F9, conservation on completion, save/load and existing brushes and generation: [M6.1](docs/m6-1-mining-interaction.md).
+
+M6.1a block damage visualization was visually accepted by the user, who confirmed it works and provided screenshots showing different crack stages on 4×4 and 8×8 blocks in generated worlds: [M6.1a](docs/m6-1a-block-damage-visualization.md). The next stage is M6.2 — Physical Extraction & Rock Grit, not yet implemented.
 
 ## Vision
 
@@ -233,7 +235,7 @@ LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve C
 
 Progression, equipment, hazards, water management, material-specific mining, inventory and goals.
 
-**M6.1a: Block Damage Visualization** implements ten cumulative, backend-independent crack stages with cached Java2D masks; manual acceptance is pending. See [M6.1a](docs/m6-1a-block-damage-visualization.md). M6.2 remains planned for Rock Grit & Material Conservation.
+**M6.1a: Block Damage Visualization** implements ten cumulative, backend-independent crack stages with cached Java2D masks; the user accepted the visual result for both block sizes. See [M6.1a](docs/m6-1a-block-damage-visualization.md). The next stage is M6.2 — Physical Extraction & Rock Grit.
 
 ## Open design questions
 
