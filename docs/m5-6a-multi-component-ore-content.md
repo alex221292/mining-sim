@@ -1,4 +1,4 @@
-# M5.6a — multi-component ore content (manual acceptance pending)
+# M5.6a — multi-component ore content (accepted)
 
 Rock host material and substance remain independent of ore identity. IRON, COPPER, SILVER and GOLD have stable IDs 1–4; 0 is invalid. Concentrations are mass fractions in integer ppm: 1 ppm = 0.0001%, 10,000 ppm = 1%, 1,000,000 ppm = 100%. These are conditional extractable components, not mineral chemistry or recovery rates. Each component is unique, positive and at most 1,000,000; the total is at most 1,000,000. Composition is immutable and sorted by stable ID. Future mining and crushing must conserve each component's mass; their mass balance is not implemented.
 
@@ -33,4 +33,8 @@ Benchmark: `gradlew.bat oreBenchmark`, Windows, Corretto 25.0.5+10, 800×401, se
 
 Focused `gradlew.bat test --tests 'miningsim.block.OreContentTest' --tests 'miningsim.block.RockIdentityTest' --tests 'miningsim.block.FixedSessionIOTest'` and `gradlew.bat test build` passed on Corretto 25. Tests cover composition validation, canonicalization, v4 round-trip and malformed data, a v3 fixture emitted before the v4 writer change, existing v1/v2 compatibility, physical parity and water, support restoration and ownership. For both sizes the 38 generated initial sessions match the recorded combined M5.5c v3 fingerprint after removing the empty v4 section; generated blocks have empty ore. The agent did not run GUI.
 
-To inspect, select size with F7, open the first F4 scene, enable F3 and hover each block; resume to observe falling and water, remove and restore supports, then save/load. Repeat both sizes; check generation remains ore-free. No ore textures, extraction, inventory or procedural ore are implemented.
+## User manual acceptance
+
+The user accepted M5.6a and confirmed that F3 displays empty, single-component and multi-component compositions, including small silver and gold concentrations in ppm and percent. After resuming, blocks fell into water, stopped at the bottom and retained their compositions. The generated world contained no ore; save/load retained ore compositions.
+
+The user did not separately report manual checks of both block sizes, support restoration or loading historical formats; the automated coverage described above is distinct from manual acceptance. No ore textures, extraction, inventory or procedural ore are implemented.

@@ -26,7 +26,7 @@ Procedural rock geology, visually accepted by the user: [M5.5b](docs/m5-5b-proce
 
 M5.5c material-weighted support was manually accepted by the user: [M5.5c](docs/m5-5c-rock-strength.md). The accepted limits, mixed beams, stepped structures, generated worlds, water excavation and save/load are documented there. This game model does not account for total supported mass, bending moments or stress concentration at the base of a cantilever.
 
-M5.6a multi-component ore content is implemented: [M5.6a](docs/m5-6a-multi-component-ore-content.md); manual acceptance is pending.
+M5.6a multi-component ore content was manually accepted by the user: [M5.6a](docs/m5-6a-multi-component-ore-content.md). The user confirmed F3 composition and concentrations, falling into water with composition retained, ore-free generated worlds, and save/load.
 
 ## Vision
 
