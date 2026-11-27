@@ -48,6 +48,7 @@ public final class FixedBlockWorld {
     private final int rockBlockSizeCells;
     private final int yOffset;
     private final Map<Long,Entry> byCell=new HashMap<>();
+    private java.util.function.LongConsumer removalListener=id->{};
     private long nextId=1,rejected,updateNanos,ticks,obstructed;
     private int waterAttempts,moved,maxVisits,maxChecks;
     private java.util.Set<Long> hypotheticalRemoval=java.util.Set.of();
@@ -106,6 +107,12 @@ public final class FixedBlockWorld {
         byCell.putAll(entries); nextId=saved.nextId();
     }
     public Block blockAt(int x,int y) { if(!world.contains(x,y)) return null; var e=byCell.get(key(snapX(x),snapY(y))); return e==null?null:e.snapshot(); }
+    void onRemoval(java.util.function.LongConsumer listener) { removalListener=java.util.Objects.requireNonNull(listener); }
+    public boolean miningEligibleAt(int x,int y) {
+        if(!world.contains(x,y)) return false;
+        var e=byCell.get(key(snapX(x),snapY(y)));
+        return e!=null && !e.pinned && e.state==State.STATIC && e.reason!=Reason.WAITING_FOR_FALL && e.supportDistance!=Integer.MAX_VALUE;
+    }
     private boolean validArea(int x,int y) { return x>=0 && y>=0 && x<=world.width()-rockBlockSizeCells && y<=world.height()-rockBlockSizeCells; }
     private boolean empty(int x,int y) {
         if(!validArea(x,y)) return false;
@@ -137,7 +144,7 @@ public final class FixedBlockWorld {
         var e=byCell.get(key(snapX(x),snapY(y))); if(e==null) return false;
         var changes=new ArrayList<World.CellChange>(rockBlockSizeCells*rockBlockSizeCells); append(changes,e.x,e.y,e.material,Material.AIR);
         if(world.replaceAllIfMatches(changes)!=World.BatchResult.CHANGED) throw new IllegalStateException("Block ownership mismatch");
-        byCell.remove(key(e.x,e.y)); return true;
+        byCell.remove(key(e.x,e.y)); removalListener.accept(e.id); return true;
     }
     public void releaseStroke() { for(var e:byCell.values()) e.pinned=false; }
     private record SearchCell(int x,int y,int distance) { }

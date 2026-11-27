@@ -30,6 +30,8 @@ M5.6a multi-component ore content was manually accepted by the user: [M5.6a](doc
 
 M5.6b procedural ore deposits and the F9 diagnostic overlay were manually accepted by the user: [M5.6b](docs/m5-6b-procedural-ore-deposits.md). The user checked generated worlds at both block sizes, positively assessed the deposits and procedural generation, and found the 4×4 deposits even more interesting.
 
+M6.1 adds session-local fixed-block mining work and readiness, without destroying or extracting matter; manual acceptance is pending: [M6.1](docs/m6-1-mining-interaction.md). M6.2 will address Rock Grit & Material Conservation.
+
 ## Vision
 
 Mining Sim is a 2D side-view mining game inspired visually by Terraria and mechanically by falling-sand simulations. The long-term goal is an underground world in which excavation has physical consequences: sand collapses, water floods tunnels, different rocks behave differently, and wooden supports help stabilize excavations.

@@ -10,12 +10,14 @@ public final class FixedBlockSession {
     private final World world;
     private final FixedBlockWorld blocks;
     private final Simulation simulation;
+    private final Mining mining;
     private final ArrayDeque<Runnable> commands=new ArrayDeque<>();
     private long cellularTicks;
     public FixedBlockSession(World world,long seed) { this(world,seed,FixedBlockWorld.DEFAULT_BLOCK_SIZE); }
-    public FixedBlockSession(World world,long seed,int rockBlockSizeCells) { this.world=world; blocks=new FixedBlockWorld(world,rockBlockSizeCells); simulation=new Simulation(world,seed); }
+    public FixedBlockSession(World world,long seed,int rockBlockSizeCells) { this.world=world; blocks=new FixedBlockWorld(world,rockBlockSizeCells); simulation=new Simulation(world,seed); mining=new Mining(blocks,world); }
     public World world() { return world; }
     public FixedBlockWorld blocks() { return blocks; }
+    public Mining mining() { return mining; }
     public long cellularTicks() { return cellularTicks; }
     public void enqueue(Runnable command) { commands.addLast(java.util.Objects.requireNonNull(command)); }
     public void applyCommands() { while(!commands.isEmpty()) commands.removeFirst().run(); }
@@ -25,7 +27,7 @@ public final class FixedBlockSession {
         for(int i=0;i<count;i++) commands.removeFirst().run();
     }
     public boolean hasPendingCommands() { return !commands.isEmpty(); }
-    public void tick() { applyCommands(); blocks.step(); simulation.step(); cellularTicks++; }
+    public void tick() { applyCommands(); blocks.step(); mining.tick(); simulation.step(); cellularTicks++; }
     /** Rasterize a stroke segment in grid coordinates; points outside the world are ignored. */
     public void blockStroke(int x0,int y0,int x1,int y1,boolean erase) {
         blockStroke(x0,y0,x1,y1,erase,Material.STONE);

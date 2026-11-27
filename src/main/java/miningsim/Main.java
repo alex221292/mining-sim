@@ -77,6 +77,7 @@ public final class Main {
         private boolean panLeft, panRight, panUp, panDown;
         private StructuralSimulationController structural;
         private boolean diagnostics;
+        private boolean miningMode;
         private int oreOverlay;
         private int sceneIndex = -1;
         private String sceneName = "";
@@ -101,10 +102,12 @@ public final class Main {
                 @Override public void mouseReleased(MouseEvent e) {
                     if (SwingUtilities.isLeftMouseButton(e)) left = false;
                     if (SwingUtilities.isRightMouseButton(e)) right = false;
+                    if(fixed!=null && miningMode) fixed.mining().select(left,hoverX,hoverY);
                     if(fixed!=null) { var target=fixed; target.enqueue(()->target.blocks().releaseStroke()); strokeStarted=false; }
                 }
                 @Override public void mouseDragged(MouseEvent e) { paintAt(e); }
-                @Override public void mouseMoved(MouseEvent e) { hoverX=(int)Math.floor(camera.screenToWorldX(e.getX())); hoverY=(int)Math.floor(camera.screenToWorldY(e.getY())); }
+                @Override public void mouseMoved(MouseEvent e) { hoverX=(int)Math.floor(camera.screenToWorldX(e.getX())); hoverY=(int)Math.floor(camera.screenToWorldY(e.getY())); if(fixed!=null && miningMode) fixed.mining().select(left,hoverX,hoverY); }
+                @Override public void mouseExited(MouseEvent e) { hoverX=hoverY=-1; if(fixed!=null && miningMode) fixed.mining().stop(); }
                 @Override public void mouseWheelMoved(MouseWheelEvent e) {
                     requestFocusInWindow();
                     camera.zoomAt(camera.zoom() * Math.pow(1.2, -e.getPreciseWheelRotation()), e.getX(), e.getY());
@@ -116,6 +119,7 @@ public final class Main {
             addFocusListener(new FocusAdapter() {
                 @Override public void focusLost(FocusEvent e) {
                     panLeft = panRight = panUp = panDown = left = right = false;
+                    if(fixed!=null) fixed.mining().stop();
                     if(fixed!=null) { var target=fixed; target.enqueue(()->target.blocks().releaseStroke()); strokeStarted=false; }
                 }
             });
@@ -138,6 +142,7 @@ public final class Main {
                         case KeyEvent.VK_9 -> { if(fixed!=null) brush = Material.MARBLE; }
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
+                        case KeyEvent.VK_M -> { miningMode=!miningMode; left=right=false; if(fixed!=null) fixed.mining().stop(); }
                         case KeyEvent.VK_F3 -> { diagnostics = !diagnostics; var target=session; boolean enabled=diagnostics; if(target!=null) target.enqueue(()->target.enableProfiling(enabled)); }
                         case KeyEvent.VK_F4 -> chooseReferenceScene();
                         case KeyEvent.VK_F5 -> { if (session!=null && session.isCoupled()) { var target=session; session.enqueue(()-> { if(target.extractSelected()!=miningsim.fragment.ExtractionCommit.Status.COMMITTED) java.awt.Toolkit.getDefaultToolkit().beep(); }); } }
@@ -298,6 +303,7 @@ public final class Main {
             if (getWidth() <= 0 || getHeight() <= 0 || (!left && !right)) return;
             double x=camera.screenToWorldX(e.getX()),y=camera.screenToWorldY(e.getY());
             hoverX=(int)Math.floor(x); hoverY=(int)Math.floor(y);
+            if(miningMode) { if(fixed!=null) fixed.mining().select(left,hoverX,hoverY); return; }
             if(fixed!=null) {
                 int ix=(int)Math.floor(x),iy=(int)Math.floor(y); if(!world.contains(ix,iy)) { strokeStarted=false; return; }
                 var target=fixed; var material=right?Material.AIR:brush;
@@ -364,7 +370,7 @@ public final class Main {
             g.setColor(Color.WHITE);
             g.drawString("1 Sand 2 Water 3 Stone 4 Wood 5 Gravel 6 Soil 7 Granite 8 Limestone 9 Marble", 8, 16);
             String runState=session!=null && session.blocked()?"BLOCKED":control.paused()?"PAUSED":session!=null && session.failure()!=null?"RETRYING":"RUNNING";
-            g.drawString("Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells+(rockBlockSizeCells==4?" EXPERIMENTAL":""):world.mode()==World.Mode.LEGACY?" | LEGACY v1":"") + " | " + runState + " | FPS: " + fps + " | TPS attempts: " + tps + " | Cells: " + world.occupiedCount(), 8, 33);
+            g.drawString("Mode: "+(miningMode?"MINING":"BRUSH")+" (M) | Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells:world.mode()==World.Mode.LEGACY?" | LEGACY v1":"") + " | " + runState + " | FPS: " + fps + " | TPS: " + tps, 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
@@ -386,6 +392,8 @@ public final class Main {
                     var hovered=b.blockAt(hoverX,hoverY);
                     if(hovered!=null) { var d=b.blockSupportAt(hoverX,hoverY); g.drawString("Cursor block "+d.id()+" "+hovered.substance()+" range "+d.rangeCells()+" cells | last tick cost "+(d.supported()?d.supportCost()+"/240":"no path")+" | "+d.state()+" wait "+d.remainingDelayTicks(),8,169); }
                     if(hovered!=null) {
+                        var progress=fixed.mining().progressAt(hoverX,hoverY);
+                        g.drawString("Mining work "+progress.accumulatedWork()+"/"+progress.requiredWork()+" ("+(100*progress.accumulatedWork()/progress.requiredWork())+"%) | ready: "+progress.ready(),8,271);
                         var ores=hovered.ores().components();
                         if(ores.isEmpty()) g.drawString("Ore: none",8,186);
                         else { int line=0; for(var c:ores) g.drawString(String.format(Locale.ROOT,"Ore: %s %d ppm (%.4f%%)",c.ore(),c.ppm(),c.ppm()/10000.0),8,186+17*line++); }
@@ -409,6 +417,14 @@ public final class Main {
                     var message=d.failure(); if(message.length()>100) message=message.substring(0,97)+"...";
                     g.drawString(message,8,220);
                 }
+                }
+            }
+            if(miningMode && fixed!=null) {
+                var progress=fixed.mining().progressAt(hoverX,hoverY);
+                if(progress!=null) {
+                    int barY=Math.max(110,getHeight()-24);
+                    g.setColor(Color.BLACK); g.fillRect(8,barY,204,14);
+                    g.setColor(Color.YELLOW); g.fillRect(10,barY+2,200*progress.accumulatedWork()/progress.requiredWork(),10);
                 }
             }
             g.dispose();
