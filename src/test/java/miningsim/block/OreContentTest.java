@@ -29,6 +29,36 @@ class OreContentTest {
         assertThrows(IllegalArgumentException.class,()->OreId.fromId(0));
     }
     private byte[] save(FixedBlockSession s) throws IOException { var out=new ByteArrayOutputStream(); FixedSessionIO.write(s,out); return out.toByteArray(); }
+    private byte[] withoutOre(FixedBlockSession s) throws IOException {
+        byte[] v3=java.util.Arrays.copyOf(save(s),36+s.world().width()*s.world().height()+20*s.blocks().size()+4);
+        v3[7]=3;
+        return checksum(v3);
+    }
+    @Test void generatedOreDoesNotChangeSixHundredTicks() throws Exception {
+        for(int size:new int[]{4,8}) for(int seed:new int[]{8,12345}) {
+            var withOre=WorldGenerator.generate(WorldGenerationConfig.preset(seed,size)).session();
+            var initial=withOre.blocks().blocks().stream().collect(java.util.stream.Collectors.toMap(FixedBlockWorld.Block::id,FixedBlockWorld.Block::ores));
+            var without=FixedSessionIO.read(new ByteArrayInputStream(withoutOre(withOre))).fixed();
+            assertArrayEquals(withoutOre(withOre),withoutOre(without));
+            for(int tick=0;tick<600;tick++) { withOre.tick(); without.tick(); }
+            assertArrayEquals(withoutOre(withOre),withoutOre(without));
+            for(var block:withOre.blocks().blocks()) assertEquals(initial.get(block.id()),block.ores());
+            new FixedBlockWorld(withOre.world(),size).restoreState(withOre.blocks().saveState());
+        }
+    }
+    @Test void generatedOreRoundTripAndOwnership() throws Exception {
+        for(int size:new int[]{4,8}) {
+            var session=WorldGenerator.generate(WorldGenerationConfig.preset(357355,size)).session();
+            assertTrue(session.blocks().blocks().stream().anyMatch(b->!b.ores().components().isEmpty()));
+            var loaded=FixedSessionIO.read(new ByteArrayInputStream(save(session))).fixed();
+            assertEquals(session.blocks().saveState(),loaded.blocks().saveState());
+            new FixedBlockWorld(loaded.world(),size).restoreState(loaded.blocks().saveState());
+            for(int y=0;y<loaded.world().height();y++) for(int x=0;x<loaded.world().width();x++) {
+                var material=loaded.world().get(x,y);
+                assertEquals(material.isFixedRock(),loaded.blocks().blockAt(x,y)!=null);
+            }
+        }
+    }
     @Test void v3FixtureReadAndV4RoundTrip() throws Exception {
         byte[] v3=Base64.getDecoder().decode("TVNJTQAAAAMAAAAIAAAACQAAAAEAAAAEAAAAAQAAAAAAAAACCAgICAAAAAAICAgIAAAAAAgICAgAAAAACAgICAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAcHBwcHBwcHAAAAAAAAAAEAAAAAAAAAAAAAAAGHJQ6s");
         var old=FixedSessionIO.read(new ByteArrayInputStream(v3)).fixed();
@@ -61,13 +91,12 @@ class OreContentTest {
             var block=b.blocks().blocks().getFirst(); assertTrue(b.blocks().removeAt(block.x(),block.y())); assertEquals(0,b.blocks().size());
         }
     }
-    @Test void generatedWorldsMatchM55cAndContainNoOre() throws Exception {
+    @Test void generatedWorldsMatchM55cIgnoringOre() throws Exception {
         var digest=java.security.MessageDigest.getInstance("SHA-256");
         for(int size:new int[]{4,8}) for(int i=0;i<19;i++) {
             int seed=i<16?i:i==16?431039:i==17?357355:12345;
             var s=WorldGenerator.generate(WorldGenerationConfig.preset(seed,size)).session();
-            for(var b:s.blocks().blocks()) assertSame(OreComposition.EMPTY,b.ores());
-            byte[] v4=save(s),v3=java.util.Arrays.copyOf(v4,v4.length-4); v3[7]=3;
+            byte[] v4=save(s),v3=java.util.Arrays.copyOf(v4,36+s.world().width()*s.world().height()+20*s.blocks().size()+4); v3[7]=3;
             var crc=new java.util.zip.CRC32(); crc.update(v3,0,v3.length-4);
             int value=(int)crc.getValue(); for(int j=0;j<4;j++) v3[v3.length-4+j]=(byte)(value >>> (24-8*j));
             digest.update(v3);

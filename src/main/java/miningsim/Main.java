@@ -77,6 +77,7 @@ public final class Main {
         private boolean panLeft, panRight, panUp, panDown;
         private StructuralSimulationController structural;
         private boolean diagnostics;
+        private int oreOverlay;
         private int sceneIndex = -1;
         private String sceneName = "";
         private Long generationSeed;
@@ -144,6 +145,7 @@ public final class Main {
                         case KeyEvent.VK_F6 -> { if(session!=null) session.resume(); }
                         case KeyEvent.VK_F7 -> switchRockBlockSize();
                         case KeyEvent.VK_F8 -> generateWorld();
+                        case KeyEvent.VK_F9 -> { oreOverlay=(oreOverlay+1)%5; repaint(); }
                         case KeyEvent.VK_LEFT -> panLeft = true;
                         case KeyEvent.VK_RIGHT -> panRight = true;
                         case KeyEvent.VK_UP -> panUp = true;
@@ -340,7 +342,18 @@ public final class Main {
                 for(var block:fixed.blocks().blocks()) {
                     int x=(int)Math.round(camera.worldToScreenX(block.x())),y=(int)Math.round(camera.worldToScreenY(block.y()));
                     int size=(int)Math.round(fixed.blocks().rockBlockSizeCells()*camera.zoom());
-                    if(x<getWidth() && y<getHeight() && x+size>0 && y+size>0) g.drawRect(x,y,size,size);
+                    if(x<getWidth() && y<getHeight() && x+size>0 && y+size>0) {
+                        if(oreOverlay>0) {
+                            var ore=miningsim.resource.OreId.values()[oreOverlay-1];
+                            int ppm=block.ores().ppm(ore);
+                            if(ppm>0) {
+                                int max=new int[]{400000,80000,500,50}[oreOverlay-1];
+                                int alpha=45+(int)(180*Math.sqrt(Math.min(1.0,ppm/(double)max)));
+                                g.setColor(new Color(255,190,20,alpha)); g.fillRect(x,y,size,size);
+                            }
+                        }
+                        g.setColor(new Color(0x45515d)); g.drawRect(x,y,size,size);
+                    }
                 }
             }
             if (session!=null && session.isCoupled()) FragmentOverlay.renderBodies(g,camera,session.physics().bodies());
@@ -360,7 +373,7 @@ public final class Main {
                 g.drawString(reason+" | F6 retry",8,67);
             } else g.drawString("Space: pause | N: step | C: clear | Arrows: pan | Wheel: zoom | R: reset camera", 8, 67);
             g.drawString("Ctrl+S: save | Ctrl+O: load", 8, 84);
-            g.drawString(fixed!=null?"F3: diagnostics | F4: scene | F7: block size | F8: generate":"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: size | F8: generate",8,101);
+            g.drawString(fixed!=null?"F3: diagnostics | F4: scene | F7: size | F8: generate | F9 ore: "+(oreOverlay==0?"OFF":miningsim.resource.OreId.values()[oreOverlay-1]):"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: size | F8: generate",8,101);
             if(generationSeed!=null) g.drawString("Generated seed: "+generationSeed, 8, getHeight()-8);
             if (diagnostics) {
                 if(fixed!=null) {

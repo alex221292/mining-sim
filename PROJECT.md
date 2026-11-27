@@ -28,6 +28,8 @@ M5.5c material-weighted support was manually accepted by the user: [M5.5c](docs/
 
 M5.6a multi-component ore content was manually accepted by the user: [M5.6a](docs/m5-6a-multi-component-ore-content.md). The user confirmed F3 composition and concentrations, falling into water with composition retained, ore-free generated worlds, and save/load.
 
+M5.6b procedural ore deposits and the F9 diagnostic overlay are implemented, pending user manual acceptance: [M5.6b](docs/m5-6b-procedural-ore-deposits.md).
+
 ## Vision
 
 Mining Sim is a 2D side-view mining game inspired visually by Terraria and mechanically by falling-sand simulations. The long-term goal is an underground world in which excavation has physical consequences: sand collapses, water floods tunnels, different rocks behave differently, and wooden supports help stabilize excavations.

@@ -43,8 +43,9 @@ class NaturalWaterGeneratorTest {
         var s=new miningsim.block.FixedBlockSession(w,12345,c.blockSize());
         int size=c.blockSize();
         var geology=new RockGeology(c.seed());
+        var ores=new OreDeposits(c.seed(),c.width(),c.height());
         for(int y=0;y<c.height()-1;y+=size) for(int x=0;x<c.width();x+=size)
-            if(y>=WorldGenerator.layers(c,x).stoneTop()) assertTrue(s.blocks().place(x,y,false,geology.sample(x+size*.5,y+size*.5)));
+            if(y>=WorldGenerator.layers(c,x).stoneTop()) assertTrue(s.blocks().place(x,y,false,geology.sample(x+size*.5,y+size*.5),ores.sample(x+size*.5,y+size*.5)));
         for(int x=0;x<c.width();x++) {
             var l=WorldGenerator.layers(c,x);
             for(int y=l.surface();y<l.stoneTop();y++) w.set(x,y,y<l.surface()+l.soil()?Material.SOIL:y<l.surface()+l.soil()+l.sand()?Material.SAND:Material.GRAVEL);

@@ -291,3 +291,9 @@ tasks.register('oreBenchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
     if (project.hasProperty('oreFixture')) args 'fixture'
 }
+tasks.register('oreDepositCalibration', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.OreDepositCalibration'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
