@@ -17,4 +17,19 @@ On Windows Corretto 25.0.5+10, `gradlew.bat test --tests 'miningsim.block.Mining
 | 8 | 16.467/41.646/41.646 | 22.695 | 2.649/6.057/11.939 | 1.941/2.024/2.261 |
 | 4 | 21.741/24.885/24.885 | 6.838 | 4.492/5.922/6.621 | 4.126/4.198/4.370 |
 
-One uncontrolled run, without active mining, is not a regression proof or worst-case bound. No FPS or rendering cost is measured. Manual acceptance remains pending.
+One uncontrolled run, without active mining, is not a regression proof or worst-case bound. No FPS or rendering cost is measured.
+
+## User manual acceptance
+
+The user accepted M6.1 and confirmed that all eight proposed manual scenarios passed:
+
+1. Mining all four rocks and F3 diagnostics.
+2. Comparing mining for 4×4 and 8×8 blocks.
+3. Stopping and resuming, and switching between blocks.
+4. Pause and a single physical step with N.
+5. Multicomponent ore composition and F9.
+6. Retention of the block and matter after full extraction readiness.
+7. Save/load preserves permanent properties and resets temporary mining progress.
+8. Existing brushes and world generation.
+
+The user performed the GUI acceptance; the agent did not launch the GUI. The next agreed stage is M6.1a — Block Damage Visualization: ten cumulative crack stages using shared rock-independent templates, supporting both block sizes and camera scaling, while retaining the diagnostic progress bar. It must not affect physical state, mass, shape, strength or ore composition. Damage data and template definitions are graphics-API-independent; Java2D may pre-cache masks. This is a plan, not an implementation. See the architectural directions in `PROJECT.md`; M6.2 Rock Grit & Material Conservation remains planned.

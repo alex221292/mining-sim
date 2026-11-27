@@ -30,7 +30,7 @@ M5.6a multi-component ore content was manually accepted by the user: [M5.6a](doc
 
 M5.6b procedural ore deposits and the F9 diagnostic overlay were manually accepted by the user: [M5.6b](docs/m5-6b-procedural-ore-deposits.md). The user checked generated worlds at both block sizes, positively assessed the deposits and procedural generation, and found the 4×4 deposits even more interesting.
 
-M6.1 adds session-local fixed-block mining work and readiness, without destroying or extracting matter; manual acceptance is pending: [M6.1](docs/m6-1-mining-interaction.md). M6.2 will address Rock Grit & Material Conservation.
+M6.1 fixed-block mining interaction was manually accepted by the user: all eight proposed checks passed, including rock resistance and F3, both block sizes, interruption and target switching, pause and single-step, multicomponent ore and F9, conservation on completion, save/load and existing brushes and generation: [M6.1](docs/m6-1-mining-interaction.md). The next agreed stage is M6.1a — Block Damage Visualization; M6.2 will address Rock Grit & Material Conservation.
 
 ## Vision
 
@@ -141,6 +141,16 @@ Use a fixed simulation timestep with an accumulator and a maximum number of catc
 
 ### Future architectural directions (not implemented or assigned milestone numbers)
 
+**Structural Damage Visualization:** Block damage templates may be reused to display structural fatigue and overloaded ceilings and supports. Mining progress and structural damage remain independent states with distinct physical semantics; only the visual mechanism may be shared. Warning dust falling from a ceiling before actual failure is purely visual: it is not a world cell, adds no physical mass, changes no block mass, size, shape, strength or ownership, and participates in neither collisions nor saves. Real rock grit produced by mining or failure is a separate future matter-conserving mechanic. Not implemented.
+
+**Rendering Backend Independence:** Simulation determines world state; the graphics backend determines how to display it. New physics and gameplay systems must not depend on Java2D, Graphics2D, BufferedImage, Path2D, Swing or a future GPU API. Data needed for display must have an API-independent representation; backend-specific resources and operations stay in the rendering layer. Avoid requiring one new object per block per frame, and account for performance and data transfer volume.
+
+**GPU-Accelerated Rendering:** A future hardware-accelerated backend should not require rewriting simulation core, cellular physics, block support, generation, mining, ore model or persistence. LWJGL + OpenGL is a candidate, not a final technology choice; Java2D may remain an alternative diagnostic backend. GPU rendering does not imply GPU physics. Not implemented.
+
+**Texture Atlas & Batched Rendering:** Future texture atlases, cached visual resources and batched rendering of blocks and other world elements. Not implemented.
+
+**GPU Lighting & Visual Effects:** Future hardware-accelerated lighting, fog of war, visibility masks and visual particles. Gameplay visibility and discovery rules for rock and ore remain independent of the graphics backend. Not implemented.
+
 **World Pre-Simulation:** Generate the entire finite world, then run a global headless physical simulation to settle unstable rock, granular materials and water. Freeze the resulting initial world state, choose a safe player spawn and begin gameplay. This stage is not restricted to the visible region or real-time 60 TPS. Define stabilization criteria and a bounded compute budget; use existing physics without cave-specific rules.
 
 **Dynamic World Activation:** During gameplay distinguish the visible region, a physically active area around the player, a neighboring chunk preload buffer, and inactive regions whose state is preserved. Activate regions when disturbances propagate, including collapses, granular movement and water flows. Active-region boundaries must not become artificial physical barriers or supports. These are future directions, not current-stage requirements.
@@ -222,6 +232,8 @@ LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve C
 ### M6 — Gameplay
 
 Progression, equipment, hazards, water management, material-specific mining, inventory and goals.
+
+**Next agreed stage — M6.1a: Block Damage Visualization (planned, not implemented).** Ten sequential cumulative crack stages, each developing the previous one, use a common template set for all rocks and support 4×4, 8×8 and camera zoom. Retain the existing progress bar as a diagnostic. Visualization must not change physical state, mass, shape, strength or ore composition. Damage data and crack template definitions are independent of graphics APIs; the current Java2D backend may pre-cache masks. Subsequent M6.2 remains planned for Rock Grit & Material Conservation.
 
 ## Open design questions
 
