@@ -28,6 +28,8 @@ public final class Mining {
     }
     public void select(boolean active,int x,int y) { this.active=active; this.x=x; this.y=y; }
     public void stop() { active=false; }
+    /** Read on the session owner thread; absent IDs have no accumulated work. */
+    public int accumulatedWork(long blockId) { return work.getOrDefault(blockId,0); }
     public Progress progressAt(int x,int y) {
         var b=blocks.blockAt(x,y); if(b==null) return null;
         return new Progress(b.id(),requiredWork(world.get(x,y),blocks.rockBlockSizeCells()),work.getOrDefault(b.id(),0));

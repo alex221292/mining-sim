@@ -233,7 +233,7 @@ LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve C
 
 Progression, equipment, hazards, water management, material-specific mining, inventory and goals.
 
-**Next agreed stage — M6.1a: Block Damage Visualization (planned, not implemented).** Ten sequential cumulative crack stages, each developing the previous one, use a common template set for all rocks and support 4×4, 8×8 and camera zoom. Retain the existing progress bar as a diagnostic. Visualization must not change physical state, mass, shape, strength or ore composition. Damage data and crack template definitions are independent of graphics APIs; the current Java2D backend may pre-cache masks. Subsequent M6.2 remains planned for Rock Grit & Material Conservation.
+**M6.1a: Block Damage Visualization** implements ten cumulative, backend-independent crack stages with cached Java2D masks; manual acceptance is pending. See [M6.1a](docs/m6-1a-block-damage-visualization.md). M6.2 remains planned for Rock Grit & Material Conservation.
 
 ## Open design questions
 

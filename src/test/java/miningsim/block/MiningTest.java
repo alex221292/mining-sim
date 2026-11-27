@@ -9,6 +9,7 @@ import miningsim.resource.OreComposition;
 import miningsim.resource.OreId;
 import miningsim.world.Material;
 import miningsim.world.World;
+import miningsim.visual.BlockDamage;
 import org.junit.jupiter.api.Test;
 
 class MiningTest {
@@ -34,13 +35,17 @@ class MiningTest {
         assertTrue(s.blocks().place(0,28,false)); assertTrue(s.blocks().place(4,28,false));
         s.mining().select(true,0,28); c.tick(); s.mining().stop(); c.tick();
         assertEquals(2,s.mining().progressAt(0,28).accumulatedWork());
+        assertEquals(1,stage(s,0,28));
+        assertEquals(0,stage(s,4,28));
         s.mining().select(true,4,28); c.tick();
         s.mining().select(true,0,28); c.togglePause(); assertFalse(c.tick());
         assertTrue(c.singleStep()); assertEquals(4,s.mining().progressAt(0,28).accumulatedWork());
         assertEquals(2,s.mining().progressAt(4,28).accumulatedWork());
+        assertEquals(1,stage(s,0,28)); assertEquals(1,stage(s,4,28));
         long id=s.blocks().blockAt(0,28).id(); assertTrue(s.blocks().removeAt(0,28));
         assertTrue(s.blocks().place(0,28,false)); assertNotEquals(id,s.blocks().blockAt(0,28).id());
         assertEquals(0,s.mining().progressAt(0,28).accumulatedWork());
+        assertEquals(0,stage(s,0,28));
         assertNull(session(4).mining().progressAt(0,28));
     }
     @Test void rejectsPinnedWaitingFallingAndOtherCells() {
@@ -78,6 +83,7 @@ class MiningTest {
             var loaded=FixedSessionIO.read(new ByteArrayInputStream(out.toByteArray())).fixed();
             assertEquals(a.blocks().saveState(),loaded.blocks().saveState());
             assertEquals(0,loaded.mining().progressAt(0,28).accumulatedWork());
+            assertEquals(0,stage(loaded,0,28));
             for(int y=0;y<33;y++) for(int x=0;x<32;x++) assertEquals(b.world().get(x,y),a.world().get(x,y));
         }
     }
@@ -96,7 +102,12 @@ class MiningTest {
         for(int t=0;t<20;t++) { a.tick(); b.tick(); }
         var moved=a.blocks().blocks().getFirst(); assertEquals(id,moved.id()); assertEquals(28,moved.y());
         assertEquals(2,a.mining().progressAt(moved.x(),moved.y()).accumulatedWork());
+        assertEquals(1,stage(a,moved.x(),moved.y()));
         assertEquals(b.blocks().saveState(),a.blocks().saveState());
         for(int y=0;y<33;y++) for(int x=0;x<32;x++) assertEquals(b.world().get(x,y),a.world().get(x,y));
+    }
+    private static int stage(FixedBlockSession s,int x,int y) {
+        var p=s.mining().progressAt(x,y);
+        return BlockDamage.stage(p.accumulatedWork(),p.requiredWork());
     }
 }

@@ -37,6 +37,9 @@ import miningsim.render.LifecycleDiagnosticsOverlay;
 import miningsim.structural.RockReferenceScenes;
 import miningsim.structural.RestingStackFixture;
 import miningsim.render.Java2DRenderer;
+import miningsim.render.BlockDamageMasks;
+import miningsim.block.Mining;
+import miningsim.visual.BlockDamage;
 import miningsim.render.Renderer;
 import miningsim.persistence.WorldIO;
 import miningsim.persistence.FixedSessionIO;
@@ -66,6 +69,7 @@ public final class Main {
         private int rockBlockSizeCells = miningsim.block.FixedBlockWorld.DEFAULT_BLOCK_SIZE;
         private SimulationControl control = new SimulationControl(fixed::tick);
         private Renderer renderer = new Java2DRenderer(world.width(), world.height());
+        private final BlockDamageMasks damageMasks = new BlockDamageMasks();
         private final Camera2D camera = new Camera2D();
         private final Timer timer;
         private Material brush = Material.SAND;
@@ -358,6 +362,8 @@ public final class Main {
                                 g.setColor(new Color(255,190,20,alpha)); g.fillRect(x,y,size,size);
                             }
                         }
+                        int work=fixed.mining().accumulatedWork(block.id());
+                        if(work>0) damageMasks.draw(g,BlockDamage.stage(work,Mining.requiredWork(world.get(block.x(),block.y()),fixed.blocks().rockBlockSizeCells())),x,y,size);
                         g.setColor(new Color(0x45515d)); g.drawRect(x,y,size,size);
                     }
                 }
