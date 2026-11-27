@@ -16,7 +16,9 @@ public final class FixedBlockWorld {
     public static final int DEFAULT_BLOCK_SIZE=8;
     /** Number of unsupported fixed ticks spent stationary before a new fall. */
     public static final int FALL_DELAY_TICKS=8;
-    public static final int MAX_HORIZONTAL_SUPPORT_DISTANCE_CELLS=32;
+    /** Historical STONE range, retained for callers of the original support API. */
+    public static final int MAX_HORIZONTAL_SUPPORT_DISTANCE_CELLS=Material.STONE.rockSupportRangeCells();
+    public static final int SUPPORT_BUDGET=240;
     public static final int WATER_SEARCH_RADIUS=32;
     public static final int WATER_MAX_VISITS=8192;
     public static final int WATER_MAX_CHECKS=32768;
@@ -27,7 +29,8 @@ public final class FixedBlockWorld {
     public record BlockDiagnostic(long id,Reason reason,int visits,int checks) { }
     public record TickDiagnostics(int waterAttempts,int moved,int maxVisits,int maxChecks) { }
     public record SupportDiagnostics(int supported,int unsupported,int waiting,long analysisNanos,int processed,int contacts) { }
-    public record BlockSupport(long id,boolean supported,int distanceCells,State state,int remainingDelayTicks) { }
+    /** distanceCells is the legacy STONE-equivalent cost, not a geometric distance in mixed rock. */
+    public record BlockSupport(long id,boolean supported,int distanceCells,State state,int remainingDelayTicks,int supportCost,int rangeCells) { }
     public record Block(long id,int x,int y,State state,SubstanceId substance) { }
     /** Authoritative block fields; diagnostics are intentionally omitted. */
     public record SavedBlock(long id,int x,int y,State state,int unsupportedTicks,boolean pinned,Material material) {
@@ -70,7 +73,8 @@ public final class FixedBlockWorld {
     public BlockSupport blockSupportAt(int x,int y) {
         if(!world.contains(x,y)) return null;
         var e=byCell.get(key(snapX(x),snapY(y))); if(e==null) return null;
-        return new BlockSupport(e.id,e.supportDistance!=Integer.MAX_VALUE,e.supportDistance==Integer.MAX_VALUE?-1:e.supportDistance,e.state,Math.max(0,FALL_DELAY_TICKS-e.unsupportedTicks));
+        int cost=e.supportDistance==Integer.MAX_VALUE?-1:e.supportDistance;
+        return new BlockSupport(e.id,cost>=0,cost<0?-1:cost*MAX_HORIZONTAL_SUPPORT_DISTANCE_CELLS/SUPPORT_BUDGET,e.state,Math.max(0,FALL_DELAY_TICKS-e.unsupportedTicks),cost,e.material.rockSupportRangeCells());
     }
     public List<BlockDiagnostic> diagnostics() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(e->new BlockDiagnostic(e.id,e.reason,e.visits,e.checks)).toList(); }
     public List<Block> blocks() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(Entry::snapshot).toList(); }
@@ -236,11 +240,14 @@ public final class FixedBlockWorld {
         return validArea(x,y) && !hypotheticalRemoval.contains(key(x,y))?byCell.get(key(x,y)):null;
     }
     private void relax(ArrayDeque<Entry> queue,Entry e,int distance,boolean vertical) {
-        if(e==null || e.pinned || e.state==State.FALLING || distance>MAX_HORIZONTAL_SUPPORT_DISTANCE_CELLS || distance>=e.supportDistance) return;
+        if(e==null || e.pinned || e.state==State.FALLING || distance>SUPPORT_BUDGET || distance>=e.supportDistance) return;
         e.supportDistance=distance;
         if(vertical) queue.addFirst(e); else queue.addLast(e);
     }
-    /** Repeated relaxation: upward propagation resets cost; horizontal steps add block size. */
+    private int horizontalCost(Entry from,Entry to) {
+        return to==null?SUPPORT_BUDGET+1:SUPPORT_BUDGET*rockBlockSizeCells/Math.min(from.material.rockSupportRangeCells(),to.material.rockSupportRangeCells());
+    }
+    /** Strictly improving relaxation; upward propagation resets cost. */
     private void analyzeSupport(List<Entry> ordered) {
         long start=System.nanoTime(); int processed=0,contacts=0;
         var queue=new ArrayDeque<Entry>();
@@ -249,7 +256,7 @@ public final class FixedBlockWorld {
             var e=queue.removeFirst(); processed++; int d=e.supportDistance,s=rockBlockSizeCells;
             var above=neighbour(e.x,e.y-s); var left=neighbour(e.x-s,e.y); var right=neighbour(e.x+s,e.y);
             if(above!=null) contacts++; if(left!=null) contacts++; if(right!=null) contacts++;
-            relax(queue,above,0,true); relax(queue,left,d+s,false); relax(queue,right,d+s,false);
+            relax(queue,above,0,true); relax(queue,left,d+horizontalCost(e,left),false); relax(queue,right,d+horizontalCost(e,right),false);
         }
         int supported=0,waiting=0;
         for(var e:ordered) { if(e.supportDistance!=Integer.MAX_VALUE) supported++; if(e.unsupportedTicks>0 && e.state==State.STATIC) waiting++; }

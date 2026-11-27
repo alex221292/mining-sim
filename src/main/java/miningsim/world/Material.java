@@ -27,6 +27,16 @@ public enum Material {
     public byte id() { return id; }
     public Category category() { return category; }
     public boolean isFixedRock() { return this == STONE || this == GRANITE || this == LIMESTONE || this == MARBLE; }
+    /** Game support range in world cells, not a physical material property. */
+    public int rockSupportRangeCells() {
+        return switch (this) {
+            case GRANITE -> 48;
+            case MARBLE -> 40;
+            case STONE -> 32;
+            case LIMESTONE -> 24;
+            default -> throw new IllegalArgumentException("Not fixed rock: " + this);
+        };
+    }
     public miningsim.resource.SubstanceId rockSubstance() {
         return switch (this) {
             case STONE -> miningsim.resource.SubstanceRegistry.STONE;

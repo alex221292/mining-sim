@@ -82,20 +82,20 @@ class RockIdentityTest {
         assertEquals(Material.BEDROCK,loaded.world().get(0,8));
     }
 
-    @Test void mixedSupportAndReplayMatchStone() {
+    @Test void mixedSupportReplayIsDeterministic() {
         for(int size:new int[]{4,8}) {
             var stone=new FixedBlockSession(new World(96,97,World.Mode.BEDROCK_ENABLED),12345,size);
             var mixed=new FixedBlockSession(new World(96,97,World.Mode.BEDROCK_ENABLED),12345,size);
             int ground=96-size;
             for(int i=0;i<6;i++) {
-                assertTrue(stone.blocks().place(i*size,ground-size,false));
+                assertTrue(stone.blocks().place(i*size,ground-size,false,ROCKS[i%4]));
                 assertTrue(mixed.blocks().place(i*size,ground-size,false,ROCKS[i%4]));
             }
-            assertTrue(stone.blocks().place(0,ground,false));
+            assertTrue(stone.blocks().place(0,ground,false,Material.MARBLE));
             assertTrue(mixed.blocks().place(0,ground,false,Material.MARBLE));
             for(int t=0;t<25;t++) {
                 if(t==2) { stone.blocks().removeAt(0,ground); mixed.blocks().removeAt(0,ground); }
-                if(t==5) { stone.blocks().place(0,ground,false); mixed.blocks().place(0,ground,false,Material.GRANITE); }
+                if(t==5) { stone.blocks().place(0,ground,false,Material.GRANITE); mixed.blocks().place(0,ground,false,Material.GRANITE); }
                 stone.tick(); mixed.tick();
                 var a=stone.blocks().saveState().blocks(); var b=mixed.blocks().saveState().blocks();
                 assertEquals(a.size(),b.size());
@@ -103,7 +103,7 @@ class RockIdentityTest {
                     var x=a.get(i); var y=b.get(i);
                     assertEquals(x.id(),y.id()); assertEquals(x.x(),y.x()); assertEquals(x.y(),y.y());
                     assertEquals(x.state(),y.state()); assertEquals(x.unsupportedTicks(),y.unsupportedTicks());
-                    assertEquals(stone.blocks().blockSupportAt(x.x(),x.y()).distanceCells(),mixed.blocks().blockSupportAt(y.x(),y.y()).distanceCells());
+                    assertEquals(stone.blocks().blockSupportAt(x.x(),x.y()).supportCost(),mixed.blocks().blockSupportAt(y.x(),y.y()).supportCost());
                 }
             }
         }

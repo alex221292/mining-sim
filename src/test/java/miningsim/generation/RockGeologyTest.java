@@ -42,7 +42,9 @@ class RockGeologyTest {
             assertTrue(WorldGenerator.generate(config).caves().blocksRemoved()>0);
             var ids=a.blocks().blocks().stream().map(FixedBlockWorld.Block::id).toList();
             assertArrayEquals(save(a),save(FixedSessionIO.read(new ByteArrayInputStream(save(a))).fixed()));
-            var b=normalized(a,size);
+            var normalized=normalized(a,size);
+            assertEquals(a.blocks().size(),normalized.blocks().size());
+            var b=WorldGenerator.generate(config).session();
             for(int i=0;i<600;i++) { a.tick(); b.tick(); }
             assertArrayEquals(initial,counts(a));
             assertEquals(ids,a.blocks().blocks().stream().map(FixedBlockWorld.Block::id).toList());
@@ -51,10 +53,10 @@ class RockGeologyTest {
             assertEquals(as.nextId(),bs.nextId()); assertEquals(as.blocks().size(),bs.blocks().size());
             for(int i=0;i<as.blocks().size();i++) {
                 var x=as.blocks().get(i); var y=bs.blocks().get(i);
-                assertEquals(new FixedBlockWorld.SavedBlock(x.id(),x.x(),x.y(),x.state(),x.unsupportedTicks(),x.pinned(),Material.STONE),y);
+                assertEquals(x,y);
             }
             for(int y=0;y<config.height();y++) for(int x=0;x<config.width();x++) {
-                var m=a.world().get(x,y); assertEquals(m.isFixedRock()?Material.STONE:m,b.world().get(x,y));
+                assertEquals(a.world().get(x,y),b.world().get(x,y));
             }
             assertArrayEquals(save(a),save(FixedSessionIO.read(new ByteArrayInputStream(save(a))).fixed()));
         }

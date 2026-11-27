@@ -363,7 +363,7 @@ public final class Main {
                     var blocked=b.diagnostics().stream().filter(d->d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_DISPLACEMENT_BLOCKED || d.reason()==miningsim.block.FixedBlockWorld.Reason.WATER_SEARCH_BUDGET_EXCEEDED || d.reason()==miningsim.block.FixedBlockWorld.Reason.BLOCKED_BY_STONE || d.reason()==miningsim.block.FixedBlockWorld.Reason.INVALID_OR_STALE_PLAN).findFirst();
                     if(blocked.isPresent()) { var d=blocked.get(); g.drawString("Block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,152); }
                     var hovered=b.blockAt(hoverX,hoverY);
-                    if(hovered!=null) { var d=b.blockSupportAt(hoverX,hoverY); g.drawString("Cursor block "+d.id()+" "+hovered.substance()+" | support "+d.supported()+" distance "+d.distanceCells()+" | "+d.state()+" wait "+d.remainingDelayTicks(),8,169); }
+                    if(hovered!=null) { var d=b.blockSupportAt(hoverX,hoverY); g.drawString("Cursor block "+d.id()+" "+hovered.substance()+" range "+d.rangeCells()+" cells | last tick cost "+(d.supported()?d.supportCost()+"/240":"no path")+" | "+d.state()+" wait "+d.remainingDelayTicks(),8,169); }
                 } else {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {

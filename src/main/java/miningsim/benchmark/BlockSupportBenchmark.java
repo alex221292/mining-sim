@@ -10,21 +10,21 @@ import miningsim.world.Material;
 public final class BlockSupportBenchmark {
     public static void main(String[] args) throws Exception {
         System.out.println(System.getProperty("java.runtime.version")+"; warmup=20 samples=100; seed=12345");
-        for(int size:new int[]{8,4}) for(String scenario:new String[]{"static100","static1000","static5000","equal-area","beam","bridges","stepped","remove-support","water","mixed1000","mixed-water"}) {
+        for(int size:new int[]{8,4}) for(String scenario:new String[]{"static100","static1000","static5000","equal-area","beam","bridges","stepped","remove-support","water","mixed1000","mixed-water","mixed-beam","mixed-stepped"}) {
             int count=switch(scenario) { case "static100" -> 100; case "static5000" -> 5000; case "equal-area" -> size==8?1000:4000; default -> 1000; };
             int width=800,height=401,columns=width/size;
             var s=new FixedBlockSession(new World(width,height,World.Mode.BEDROCK_ENABLED),12345,size);
-            if(scenario.equals("beam")) {
-                count=columns; for(int i=0;i<count;i++) s.blocks().place(i*size,height-1-2*size,false);
+            if(scenario.equals("beam") || scenario.equals("mixed-beam")) {
+                count=columns; for(int i=0;i<count;i++) s.blocks().place(i*size,height-1-2*size,false,scenario.equals("mixed-beam")?rock(i):Material.STONE);
                 s.blocks().place(0,height-1-size,false); count++;
             } else if(scenario.equals("bridges")) {
                 count=0; for(int row=0;row<5;row++) for(int i=0;i<columns;i++) { s.blocks().place(i*size,height-1-(2*row+2)*size,false); count++; }
                 for(int i=0;i<10;i++) { s.blocks().place(0,height-1-(i+1)*size,false); s.blocks().place((columns-1)*size,height-1-(i+1)*size,false); } count=s.blocks().size();
-            } else if(scenario.equals("stepped")) {
+            } else if(scenario.equals("stepped") || scenario.equals("mixed-stepped")) {
                 for(int x=0;x<width-4*size;x+=8*size) {
-                    int ground=height-1-size; s.blocks().place(x,ground,false); s.blocks().place(x,ground-size,false);
-                    s.blocks().place(x+size,ground-size,false); s.blocks().place(x+size,ground-2*size,false);
-                    for(int i=1;i<=4;i++) s.blocks().place(x+(i+1)*size,ground-2*size,false);
+                    int ground=height-1-size; boolean mixed=scenario.equals("mixed-stepped"); s.blocks().place(x,ground,false,mixed?rock(x/size):Material.STONE); s.blocks().place(x,ground-size,false,mixed?rock(1):Material.STONE);
+                    s.blocks().place(x+size,ground-size,false,mixed?rock(2):Material.STONE); s.blocks().place(x+size,ground-2*size,false,mixed?rock(3):Material.STONE);
+                    for(int i=1;i<=4;i++) s.blocks().place(x+(i+1)*size,ground-2*size,false,mixed?rock(i):Material.STONE);
                 }
                 count=s.blocks().size();
             } else if(scenario.equals("water") || scenario.equals("mixed-water")) {

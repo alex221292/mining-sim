@@ -242,3 +242,45 @@ tasks.register('generationParityProbe', JavaExec) {
     mainClass = 'miningsim.benchmark.GenerationParityProbe'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+
+def m55bSources = layout.buildDirectory.dir('m55b-support-source')
+def m55bClasses = layout.buildDirectory.dir('m55b-support-classes')
+tasks.register('extractM55bSupport') {
+    outputs.dir m55bSources
+    doLast {
+        def target = m55bSources.get().file('miningsim/block/FixedBlockWorld.java').asFile
+        target.parentFile.mkdirs()
+        target.bytes = providers.exec { commandLine 'git', 'show', 'f0b2ceb17735e9b917cabc8916d041859b04ddbf:src/main/java/miningsim/block/FixedBlockWorld.java' }.standardOutput.asBytes.get()
+    }
+}
+tasks.register('compileM55bSupport', JavaCompile) {
+    dependsOn 'classes', 'extractM55bSupport'
+    source = fileTree(m55bSources) { include '**/*.java' }
+    classpath = sourceSets.main.runtimeClasspath
+    destinationDirectory = m55bClasses
+    javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.register('strengthCalibration', JavaExec) {
+    dependsOn 'classes'
+    if (project.hasProperty('m55bBaseline')) {
+        dependsOn 'compileM55bSupport'
+        classpath = files(m55bClasses) + sourceSets.main.runtimeClasspath
+    } else classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.StrengthCalibration'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.register('stoneSupportParity', JavaExec) {
+    dependsOn 'classes'
+    if (project.hasProperty('m55bBaseline')) {
+        dependsOn 'compileM55bSupport'
+        classpath = files(m55bClasses) + sourceSets.main.runtimeClasspath
+    } else classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.StoneSupportParity'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.register('m55bBlockSupportBenchmark', JavaExec) {
+    dependsOn 'compileM55bSupport'
+    classpath = files(m55bClasses) + sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.BlockSupportBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
