@@ -28,7 +28,7 @@ M5.5c material-weighted support was manually accepted by the user: [M5.5c](docs/
 
 M5.6a multi-component ore content was manually accepted by the user: [M5.6a](docs/m5-6a-multi-component-ore-content.md). The user confirmed F3 composition and concentrations, falling into water with composition retained, ore-free generated worlds, and save/load.
 
-M5.6b procedural ore deposits and the F9 diagnostic overlay are implemented, pending user manual acceptance: [M5.6b](docs/m5-6b-procedural-ore-deposits.md).
+M5.6b procedural ore deposits and the F9 diagnostic overlay were manually accepted by the user: [M5.6b](docs/m5-6b-procedural-ore-deposits.md). The user checked generated worlds at both block sizes, positively assessed the deposits and procedural generation, and found the 4×4 deposits even more interesting.
 
 ## Vision
 
