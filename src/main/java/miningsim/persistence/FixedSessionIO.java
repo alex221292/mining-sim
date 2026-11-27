@@ -10,10 +10,12 @@ import miningsim.block.FixedBlockSession;
 import miningsim.block.FixedBlockWorld;
 import miningsim.world.Material;
 import miningsim.world.World;
+import miningsim.resource.OreComposition;
+import miningsim.resource.OreId;
 
-/** MSIM v3 fixed-block sessions; reads v2 and delegates v1 to WorldIO. Streams remain caller-owned. */
+/** MSIM v4 fixed-block sessions; reads v2/v3 and delegates v1 to WorldIO. Streams remain caller-owned. */
 public final class FixedSessionIO {
-    private static final int MAGIC=0x4d53494d, VERSION=3;
+    private static final int MAGIC=0x4d53494d, VERSION=4;
     private static int rockCode(Material m) {
         return switch(m) { case STONE -> 0; case GRANITE -> 1; case LIMESTONE -> 2; case MARBLE -> 3; default -> throw new IllegalArgumentException("Invalid rock material"); };
     }
@@ -42,6 +44,12 @@ public final class FixedSessionIO {
             out.writeLong(b.id()); out.writeInt(b.x()); out.writeInt(b.y()); out.writeByte(b.state()==FixedBlockWorld.State.STATIC?0:1);
             out.writeByte(b.unsupportedTicks()); out.writeByte(b.pinned()?1:0); out.writeByte(rockCode(b.material()));
         }
+        int oreBlocks=0; for(var b:saved.blocks()) if(!b.ores().components().isEmpty()) oreBlocks++;
+        out.writeInt(oreBlocks);
+        for(var b:saved.blocks()) if(!b.ores().components().isEmpty()) {
+            out.writeLong(b.id()); out.writeByte(b.ores().components().size());
+            for(var c:b.ores().components()) { out.writeByte(c.ore().id()); out.writeInt(c.ppm()); }
+        }
         out.flush(); var raw=new DataOutputStream(output); raw.writeInt((int)crc.getValue()); raw.flush();
     }
     /** Owner-thread save barrier: later commands stay queued and cannot change these bytes. */
@@ -63,7 +71,7 @@ public final class FixedSessionIO {
             if(header.readInt()!=MAGIC) throw new IOException("Invalid MSIM magic");
             int version=header.readInt(); input.reset();
             if(version==1) { var world=WorldIO.read(input); return new Loaded(world,null); }
-            if(version!=2 && version!=VERSION) throw new IOException("Unsupported MSIM version: "+version);
+            if(version!=2 && version!=3 && version!=VERSION) throw new IOException("Unsupported MSIM version: "+version);
             var crc=new CRC32(); var in=new DataInputStream(new CheckedInputStream(input,crc));
             in.readInt(); in.readInt(); int width=in.readInt(),height=in.readInt(),mode=in.readInt(),size=in.readInt(),count=in.readInt(); long nextId=in.readLong();
             dimensions(width,height);
@@ -83,6 +91,22 @@ public final class FixedSessionIO {
                 long id=in.readLong(); int x=in.readInt(),y=in.readInt(),state=in.readUnsignedByte(),wait=in.readUnsignedByte(),pinned=in.readUnsignedByte(),substance=in.readUnsignedByte();
                 if(state>1 || pinned>1 || version==2 && substance!=0) throw new IOException("Invalid block state or substance");
                 records.add(new FixedBlockWorld.SavedBlock(id,x,y,state==0?FixedBlockWorld.State.STATIC:FixedBlockWorld.State.FALLING,wait,pinned==1,rockMaterial(substance)));
+            }
+            if(version==4) {
+                int oreBlocks=in.readInt(); if(oreBlocks<0 || oreBlocks>count) throw new IOException("Invalid ore block count");
+                var indexes=new java.util.HashMap<Long,Integer>();
+                for(int i=0;i<records.size();i++) if(indexes.put(records.get(i).id(),i)!=null) throw new IOException("Duplicate block ID");
+                var seen=new java.util.HashSet<Long>();
+                for(int i=0;i<oreBlocks;i++) {
+                    long id=in.readLong(); int n=in.readUnsignedByte(); Integer index=indexes.get(id);
+                    if(index==null || !seen.add(id) || n==0 || n>OreId.values().length) throw new IOException("Invalid ore block record");
+                    var components=new OreComposition.Component[n];
+                    try {
+                        for(int j=0;j<n;j++) components[j]=new OreComposition.Component(OreId.fromId(in.readUnsignedByte()),in.readInt());
+                        var b=records.get(index);
+                        records.set(index,new FixedBlockWorld.SavedBlock(b.id(),b.x(),b.y(),b.state(),b.unsupportedTicks(),b.pinned(),b.material(),OreComposition.of(components)));
+                    } catch(IllegalArgumentException | NullPointerException ex) { throw new IOException("Invalid ore composition",ex); }
+                }
             }
             long actual=crc.getValue(); var raw=new DataInputStream(input); long expected=Integer.toUnsignedLong(raw.readInt());
             if(actual!=expected) throw new IOException("MSIM checksum mismatch");

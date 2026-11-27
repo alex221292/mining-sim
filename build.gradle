@@ -284,3 +284,10 @@ tasks.register('m55bBlockSupportBenchmark', JavaExec) {
     mainClass = 'miningsim.benchmark.BlockSupportBenchmark'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
+tasks.register('oreBenchmark', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.OreBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    if (project.hasProperty('oreFixture')) args 'fixture'
+}

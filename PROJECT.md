@@ -26,6 +26,8 @@ Procedural rock geology, visually accepted by the user: [M5.5b](docs/m5-5b-proce
 
 M5.5c material-weighted support was manually accepted by the user: [M5.5c](docs/m5-5c-rock-strength.md). The accepted limits, mixed beams, stepped structures, generated worlds, water excavation and save/load are documented there. This game model does not account for total supported mass, bending moments or stress concentration at the base of a cantilever.
 
+M5.6a multi-component ore content is implemented: [M5.6a](docs/m5-6a-multi-component-ore-content.md); manual acceptance is pending.
+
 ## Vision
 
 Mining Sim is a 2D side-view mining game inspired visually by Terraria and mechanically by falling-sand simulations. The long-term goal is an underground world in which excavation has physical consequences: sand collapses, water floods tunnels, different rocks behave differently, and wooden supports help stabilize excavations.
@@ -142,6 +144,16 @@ Use a fixed simulation timestep with an accumulator and a maximum number of catc
 **Directional Block Movement & External Impulses:** Future research into generalized atomic grid movement of fixed blocks, horizontal movement of free blocks, and character pushing of individual blocks or groups, limited by mass and future gameplay characteristics. Explore temporary external impulses, simplified ballistic motion, localized game explosions and block dispersal, and optional low-priority experimental diagonal sliding of free blocks. Distinguish free rocks from blocks in a monolithic mass; preserve ownership, rock and substance identity, determinism and operation atomicity, accounting for collisions, water displacement and subsequent support recalculation. An explosion's game radius limits initial effects, not necessarily subsequent structural collapses. Keep square blocks fixed in orientation and aligned to the grid; do not return to arbitrary-shape rigid bodies, rotation or the historical rigid-body solver. Roadmap only; not implemented.
 
 **Advanced Structural Load Model:** Future research into support loads, the mass of supported blocks, weak boundaries and stress concentrations. Do not replace the accepted support model without separately agreed architecture and acceptance criteria. Roadmap only; not implemented.
+
+**Underground Fog of War:** In gameplay hide unexplored underground rock, ore, caves, water, sand, gravel and other materials, without revealing cavities by silhouettes. Exposed surface and observable excavation boundaries are visible under future lighting/visibility rules; retain the full-view sandbox. Not implemented.
+
+**Dynamic Lighting & Visibility:** Future light sources, mine illumination and rock occlusion. Separate world state, physical activation, lighting and visibility; invisibility does not automatically suspend physics. Not implemented.
+
+**Exploration State:** Future memory of explored regions must not reveal the current state of hidden rock through previously explored maps. Not implemented.
+
+**Geological Prospecting:** Future Vintage Story-inspired analysis of accessible samples and nearby actual ore content within a limited radius; tool quality controls accuracy and detection threshold, with results in ppm or percent and multiple measurements for exploration. Do not expose exact ore coordinates or hidden geometry. Define mass weighting, the concentration denominator and treatment of voids separately. Not implemented.
+
+**Exploratory Drilling:** Future directed drilling beyond accessible workings and analysis of extracted samples. Not implemented.
 
 ### M1 — Interactive materials sandbox
 

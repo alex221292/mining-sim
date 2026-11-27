@@ -254,8 +254,16 @@ public final class Main {
             try {
                 if (JOptionPane.showConfirmDialog(this, "Replace current world with a reference scene? Unsaved work will be lost.",
                         "Reference scene", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
-                int next = (sceneIndex + 1) % 11;
-                var scene = switch (next) {
+                int next = (sceneIndex + 1) % 12;
+                if(next==0) {
+                    var nextFixed=miningsim.block.OreReferenceScene.create(rockBlockSizeCells);
+                    var nextWorld=nextFixed.world(); var nextControl=new SimulationControl(nextFixed::tick); nextControl.togglePause();
+                    if(session!=null) session.retire(); world=nextWorld; fixed=nextFixed; session=null; structural=null; control=nextControl;
+                    renderer=new Java2DRenderer(world.width(),world.height()); sceneIndex=0; sceneName="Ore content"; generationSeed=null;
+                    left=right=strokeStarted=false; camera.reset(); return;
+                }
+                int legacy=next-1;
+                var scene = switch (legacy) {
                     case 0 -> RockReferenceScenes.roof("short",4,1);
                     case 1 -> RockReferenceScenes.roof("long",12,1);
                     case 2 -> RockReferenceScenes.roof("thick",12,2);
@@ -270,17 +278,17 @@ public final class Main {
                 };
                 boolean paused = control.paused();
                 var nextWorld=scene.world(); var nextStructural=new StructuralSimulationController(scene);
-                if(next==10) RestingStackFixture.populate(nextStructural.registry());
-                var nextSession=new InteractiveSession(nextWorld,nextStructural,diagnostics,next==8 || next==9);
-                if(next==10) { nextSession.physics().synchronize(); nextSession.occupancy().rebuild(nextSession.physics(),0); }
-                if(next>=5 && next<=7) { nextStructural.tick(); nextSession.extractSelected(); }
+                if(legacy==10) RestingStackFixture.populate(nextStructural.registry());
+                var nextSession=new InteractiveSession(nextWorld,nextStructural,diagnostics,legacy==8 || legacy==9);
+                if(legacy==10) { nextSession.physics().synchronize(); nextSession.occupancy().rebuild(nextSession.physics(),0); }
+                if(legacy>=5 && legacy<=7) { nextStructural.tick(); nextSession.extractSelected(); }
                 var nextControl=new SimulationControl(nextSession::tick); if(paused) nextControl.togglePause();
                 var nextRenderer=new Java2DRenderer(nextWorld.width(),nextWorld.height());
                 if(session!=null) session.retire(); world=nextWorld; structural=nextStructural; session=nextSession; fixed=null; control=nextControl; renderer=nextRenderer;
                 sceneIndex = next; sceneName = scene.name(); generationSeed=null;
                 camera.reset(); camera.zoomAt(Camera2D.MAX_ZOOM,0,0);
                 camera.pan(-Math.max(0,(getWidth()/camera.zoom()-world.width())/2), -Math.max(0,(getHeight()/camera.zoom()-world.height())/2));
-                if(next==10) camera.pan(0,Math.max(0,world.height()-getHeight()/camera.zoom()));
+                if(legacy==10) camera.pan(0,Math.max(0,world.height()-getHeight()/camera.zoom()));
             } finally { previous=System.nanoTime(); accumulator=0; timer.start(); requestFocusInWindow(); repaint(); }
         }
 
@@ -364,6 +372,11 @@ public final class Main {
                     if(blocked.isPresent()) { var d=blocked.get(); g.drawString("Block "+d.id()+": "+d.reason()+" | visits "+d.visits()+" checks "+d.checks(),8,152); }
                     var hovered=b.blockAt(hoverX,hoverY);
                     if(hovered!=null) { var d=b.blockSupportAt(hoverX,hoverY); g.drawString("Cursor block "+d.id()+" "+hovered.substance()+" range "+d.rangeCells()+" cells | last tick cost "+(d.supported()?d.supportCost()+"/240":"no path")+" | "+d.state()+" wait "+d.remainingDelayTicks(),8,169); }
+                    if(hovered!=null) {
+                        var ores=hovered.ores().components();
+                        if(ores.isEmpty()) g.drawString("Ore: none",8,186);
+                        else { int line=0; for(var c:ores) g.drawString(String.format(Locale.ROOT,"Ore: %s %d ppm (%.4f%%)",c.ore(),c.ppm(),c.ppm()/10000.0),8,186+17*line++); }
+                    }
                 } else {
                 if (structural == null) g.drawString("STRUCTURE DISABLED (reference scenes only)",8,118);
                 else {

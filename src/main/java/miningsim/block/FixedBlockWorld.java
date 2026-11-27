@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import miningsim.resource.SubstanceId;
+import miningsim.resource.OreComposition;
 import miningsim.world.Material;
 import miningsim.world.World;
 
@@ -31,16 +32,17 @@ public final class FixedBlockWorld {
     public record SupportDiagnostics(int supported,int unsupported,int waiting,long analysisNanos,int processed,int contacts) { }
     /** distanceCells is the legacy STONE-equivalent cost, not a geometric distance in mixed rock. */
     public record BlockSupport(long id,boolean supported,int distanceCells,State state,int remainingDelayTicks,int supportCost,int rangeCells) { }
-    public record Block(long id,int x,int y,State state,SubstanceId substance) { }
+    public record Block(long id,int x,int y,State state,SubstanceId substance,OreComposition ores) { }
     /** Authoritative block fields; diagnostics are intentionally omitted. */
-    public record SavedBlock(long id,int x,int y,State state,int unsupportedTicks,boolean pinned,Material material) {
+    public record SavedBlock(long id,int x,int y,State state,int unsupportedTicks,boolean pinned,Material material,OreComposition ores) {
+        public SavedBlock(long id,int x,int y,State state,int unsupportedTicks,boolean pinned,Material material) { this(id,x,y,state,unsupportedTicks,pinned,material,OreComposition.EMPTY); }
         public SavedBlock(long id,int x,int y,State state,int unsupportedTicks,boolean pinned) { this(id,x,y,state,unsupportedTicks,pinned,Material.STONE); }
     }
     public record SavedState(long nextId,List<SavedBlock> blocks) { public SavedState { blocks=List.copyOf(blocks); } }
     private static final class Entry {
-        final long id; final Material material; int x,y; State state=State.STATIC; boolean pinned; Reason reason=Reason.NONE; int visits,checks,unsupportedTicks,supportDistance=Integer.MAX_VALUE;
-        Entry(long id,int x,int y,boolean pinned,Material material) { this.id=id; this.x=x; this.y=y; this.pinned=pinned; this.material=material; }
-        Block snapshot() { return new Block(id,x,y,state,material.rockSubstance()); }
+        final long id; final Material material; final OreComposition ores; int x,y; State state=State.STATIC; boolean pinned; Reason reason=Reason.NONE; int visits,checks,unsupportedTicks,supportDistance=Integer.MAX_VALUE;
+        Entry(long id,int x,int y,boolean pinned,Material material,OreComposition ores) { this.id=id; this.x=x; this.y=y; this.pinned=pinned; this.material=material; this.ores=ores; }
+        Block snapshot() { return new Block(id,x,y,state,material.rockSubstance(),ores); }
     }
     private final World world;
     private final int rockBlockSizeCells;
@@ -80,7 +82,7 @@ public final class FixedBlockWorld {
     public List<Block> blocks() { return byCell.values().stream().sorted(Comparator.comparingLong(e->e.id)).map(Entry::snapshot).toList(); }
     public SavedState saveState() {
         return new SavedState(nextId,byCell.values().stream().sorted(Comparator.comparingLong(e->e.id))
-                .map(e->new SavedBlock(e.id,e.x,e.y,e.state,e.unsupportedTicks,e.pinned,e.material)).toList());
+                .map(e->new SavedBlock(e.id,e.x,e.y,e.state,e.unsupportedTicks,e.pinned,e.material,e.ores)).toList());
     }
     /** Rebuild metadata only after verifying that every rock cell is owned exactly once. */
     public void restoreState(SavedState saved) {
@@ -88,11 +90,11 @@ public final class FixedBlockWorld {
         java.util.Objects.requireNonNull(saved); var ids=new HashSet<Long>(); var entries=new HashMap<Long,Entry>();
         long max=0;
         for(var b:saved.blocks()) {
-            if(b==null || b.id()<=0 || !ids.add(b.id()) || b.state()==null || b.material()==null || !b.material().isFixedRock() || b.unsupportedTicks()<0 || b.unsupportedTicks()>FALL_DELAY_TICKS
+            if(b==null || b.id()<=0 || !ids.add(b.id()) || b.state()==null || b.material()==null || b.ores()==null || !b.material().isFixedRock() || b.unsupportedTicks()<0 || b.unsupportedTicks()>FALL_DELAY_TICKS
                     || b.state()==State.FALLING && (b.unsupportedTicks()!=0 || b.pinned()) || b.pinned() && b.unsupportedTicks()!=0
                     || !validArea(b.x(),b.y()) || snapX(b.x())!=b.x() || snapY(b.y())!=b.y())
                 throw new IllegalArgumentException("Invalid block record");
-            var e=new Entry(b.id(),b.x(),b.y(),b.pinned(),b.material()); e.state=b.state(); e.unsupportedTicks=b.unsupportedTicks();
+            var e=new Entry(b.id(),b.x(),b.y(),b.pinned(),b.material(),b.ores()); e.state=b.state(); e.unsupportedTicks=b.unsupportedTicks();
             if(entries.put(key(b.x(),b.y()),e)!=null) throw new IllegalArgumentException("Overlapping blocks");
             for(int y=b.y();y<b.y()+rockBlockSizeCells;y++) for(int x=b.x();x<b.x()+rockBlockSizeCells;x++)
                 if(world.get(x,y)!=e.material) throw new IllegalArgumentException("Block and World mismatch");
@@ -117,14 +119,18 @@ public final class FixedBlockWorld {
         return place(x,y,pinned,Material.STONE);
     }
     public boolean place(int x,int y,boolean pinned,Material material) {
+        return place(x,y,pinned,material,OreComposition.EMPTY);
+    }
+    public boolean place(int x,int y,boolean pinned,Material material,OreComposition ores) {
         if(material==null || !material.isFixedRock()) throw new IllegalArgumentException("Not fixed rock");
+        java.util.Objects.requireNonNull(ores);
         if(!world.contains(x,y)) { rejected++; return false; }
         x=snapX(x); y=snapY(y); if(byCell.containsKey(key(x,y))) return false;
         if(!empty(x,y)) { rejected++; return false; }
         long id=nextId,next=Math.incrementExact(nextId);
         var changes=new ArrayList<World.CellChange>(rockBlockSizeCells*rockBlockSizeCells); append(changes,x,y,Material.AIR,material);
         if(world.replaceAllIfMatches(changes)!=World.BatchResult.CHANGED) { rejected++; return false; }
-        byCell.put(key(x,y),new Entry(id,x,y,pinned,material)); nextId=next; return true;
+        byCell.put(key(x,y),new Entry(id,x,y,pinned,material,ores)); nextId=next; return true;
     }
     public boolean removeAt(int x,int y) {
         if(!world.contains(x,y)) return false;
