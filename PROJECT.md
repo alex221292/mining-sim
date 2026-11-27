@@ -24,7 +24,7 @@ M5.5a fixed-block rock identities, accepted by the user: [M5.5a](docs/m5-5a-rock
 
 Procedural rock geology, visually accepted by the user: [M5.5b](docs/m5-5b-procedural-rock-geology.md). Seeded correlated fields assign fixed-block rock identity without changing terrain geometry or MSIM v3. Individual rock strength remains a task for M5.5c.
 
-M5.5c material-weighted support is implemented: [M5.5c](docs/m5-5c-rock-strength.md). Manual acceptance remains outstanding.
+M5.5c material-weighted support was manually accepted by the user: [M5.5c](docs/m5-5c-rock-strength.md). The accepted limits, mixed beams, stepped structures, generated worlds, water excavation and save/load are documented there. This game model does not account for total supported mass, bending moments or stress concentration at the base of a cantilever.
 
 ## Vision
 
@@ -138,6 +138,10 @@ Use a fixed simulation timestep with an accumulator and a maximum number of catc
 **World Pre-Simulation:** Generate the entire finite world, then run a global headless physical simulation to settle unstable rock, granular materials and water. Freeze the resulting initial world state, choose a safe player spawn and begin gameplay. This stage is not restricted to the visible region or real-time 60 TPS. Define stabilization criteria and a bounded compute budget; use existing physics without cave-specific rules.
 
 **Dynamic World Activation:** During gameplay distinguish the visible region, a physically active area around the player, a neighboring chunk preload buffer, and inactive regions whose state is preserved. Activate regions when disturbances propagate, including collapses, granular movement and water flows. Active-region boundaries must not become artificial physical barriers or supports. These are future directions, not current-stage requirements.
+
+**Directional Block Movement & External Impulses:** Future research into generalized atomic grid movement of fixed blocks, horizontal movement of free blocks, and character pushing of individual blocks or groups, limited by mass and future gameplay characteristics. Explore temporary external impulses, simplified ballistic motion, localized game explosions and block dispersal, and optional low-priority experimental diagonal sliding of free blocks. Distinguish free rocks from blocks in a monolithic mass; preserve ownership, rock and substance identity, determinism and operation atomicity, accounting for collisions, water displacement and subsequent support recalculation. An explosion's game radius limits initial effects, not necessarily subsequent structural collapses. Keep square blocks fixed in orientation and aligned to the grid; do not return to arbitrary-shape rigid bodies, rotation or the historical rigid-body solver. Roadmap only; not implemented.
+
+**Advanced Structural Load Model:** Future research into support loads, the mass of supported blocks, weak boundaries and stress concentrations. Do not replace the accepted support model without separately agreed architecture and acceptance criteria. Roadmap only; not implemented.
 
 ### M1 — Interactive materials sandbox
 

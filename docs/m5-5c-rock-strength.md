@@ -1,4 +1,4 @@
-# M5.5c — material-weighted support (manual acceptance pending)
+# M5.5c — material-weighted support (accepted)
 
 This is a game rule, not real rock strength. Horizontal support ranges in world cells are GRANITE 48, MARBLE 40, STONE 32 and LIMESTONE 24. Both block sizes therefore use the same physical range.
 
@@ -6,13 +6,15 @@ Each path has budget 240. A horizontal edge costs `240 * blockSize / min(rangeA,
 
 The existing multi-source queue performs strict minimum-cost relaxation. Each improved block is processed again; an upward edge resets cost to zero, no downward or diagonal edge exists. Horizontal costs are positive and accepted costs are bounded nonnegative integers, so strict improvements terminate even with cycles and upward resets. Processing to a fixed point yields the minimum admissible cost independent of traversal order. Pinned and falling blocks and source/contact rules are unchanged. Consecutive upward resets still permit indefinitely long stepped structures; this is intentional and not structural mechanics.
 
+The model does not account for total supported mass, bending moments or mechanical stress concentration at the cantilever base. A weaker rock can support a long granite cantilever as a consequence of this simplified path-budget algorithm, not a claim of physical realism.
+
 F3 shows the last tick's cost and range; it can be stale after edits, movement, loading or while paused. MSIM v3 is unchanged: costs are derived, not serialized. Older saves can collapse under the new rules; loading does not tick. Seeded generation remains unchanged and local natural collapses are expected. World pre-simulation and dynamic activation are not implemented.
 
 ## Verification
 
 `gradlew.bat test --tests 'miningsim.block.WeightedSupportTest' --tests 'miningsim.block.RockIdentityTest' --tests 'miningsim.generation.RockGeologyTest'` and `gradlew.bat test build` passed on Corretto 25.0.5. Tests previously asserting mixed rocks behave exactly like STONE were updated because that historical contract was explicitly replaced; mixed determinism, material conservation and state checks remain.
 
-Controlled `stoneSupportParity` compared the actual M5.5b class with this implementation: per-tick MSIM state fingerprints match for 200 ticks at both sizes, including the full cell grid, IDs, positions, states and timers, support removal/restoration and water. The combined fingerprint of all 38 freshly generated sessions also matched (`0aeb66ecdea9b33445d989fc7311bcbd957d3e464c1417a6d21a2edbf547cda5`). These are representative fixtures, not an exhaustive proof. GUI acceptance has not been performed.
+Controlled `stoneSupportParity` compared the actual M5.5b class with this implementation: per-tick MSIM state fingerprints match for 200 ticks at both sizes, including the full cell grid, IDs, positions, states and timers, support removal/restoration and water. The combined fingerprint of all 38 freshly generated sessions also matched (`0aeb66ecdea9b33445d989fc7311bcbd957d3e464c1417a6d21a2edbf547cda5`). These are representative fixtures, not an exhaustive proof. GUI acceptance was performed by the user, not the agent.
 
 ## World calibration
 
@@ -35,6 +37,10 @@ An additional controlled run added mixed-beam and mixed-stepped fixtures: baseli
 
 Generated seed 12345 new first tick 24.208/8.349 ms for 8/4; late mean/p95/max 1.955/2.034/2.558 and 4.059/4.111/4.588 ms. The 8×8 first tick exceeds the 16.67 ms 60 TPS budget. Historical M5.5b generation timings are in its document, not a controlled same-run baseline. Observed maxima are not worst-case bounds.
 
-## Manual acceptance (user only)
+## User manual acceptance
 
-Build four 8×8 cantilevers with 6/5/4/3 blocks (granite/marble/stone/limestone), then add one more and check its delayed fall; repeat 4×4 with 12/10/8/6. Check the mixed limestone beam above, vertical and stepped shapes, and restoration within eight ticks. Generate several worlds, resume and inspect natural collapses, excavate near water, and save/load a mixed scene. F8 must remain paused. These are instructions, not completed GUI checks.
+The user accepted M5.5c after manual testing:
+
+- Homogeneous 8×8 cantilevers supported 6 GRANITE, 5 MARBLE, 4 STONE and 3 LIMESTONE blocks, excluding the support column; 4×4 limits matched 12/10/8/6.
+- A mixed 8×8 cantilever supported two GRANITE and two LIMESTONE blocks; the next LIMESTONE fell. A reverse mixed 4×4 cantilever supported two LIMESTONE and seven GRANITE blocks; the next GRANITE fell. The latter matches the accumulated budget and was accepted.
+- Stepped structures worked correctly. Generated-world visual quality, behavior after resuming, excavation near water, and save/load were accepted.
