@@ -34,7 +34,15 @@ M6.1 fixed-block mining interaction was manually accepted by the user: all eight
 
 M6.1a block damage visualization was visually accepted by the user, who confirmed it works and provided screenshots showing different crack stages on 4×4 and 8×8 blocks in generated worlds: [M6.1a](docs/m6-1a-block-damage-visualization.md).
 
-M6.2a adds rock GRIT with moving ore compositions and MSIM v5; manual GUI acceptance is pending: [M6.2a](docs/m6-2a-rock-grit-foundation.md). M6.2b atomic block-to-grit extraction remains unimplemented.
+M6.2a rock GRIT, moving ore compositions and MSIM v5 were manually accepted by the user: all seven proposed checks passed, and the appearance and physical behavior met expectations. See [M6.2a](docs/m6-2a-rock-grit-foundation.md). At 100% mining progress the fixed block remains intact.
+
+The next stage is **M6.2b — Physical Block Extraction & Grit Conversion**: physical destruction of a fully mined fixed block, conversion of its full volume to same-rock GRIT while conserving substance and all ore components, atomic removal of fixed-block ownership and creation of grit cells, natural granular settling, and correct support updates for neighboring blocks. This is a preliminary goal, not an implementation.
+
+## Pre-Alpha save compatibility policy
+
+MSIM formats are an internal, evolving engine contract, not a public API. Backward and forward compatibility are not guaranteed. Data-model changes may increment the format version and retire historical versions without migrations. Correct saving and loading of the current format, preservation of all permanent data and world invariants, versioning, integrity checks and validation, atomic writes, and safe rejection of unsupported versions without damaging the file or current world remain mandatory.
+
+Older-version support and historical-format tests are not mandatory in new milestones unless explicitly requested. Existing compatibility may be kept when it does not impede development; obsolete readers, fixtures and associated tests may be removed during subsequent persistence changes. Do not create separate milestones solely to maintain or remove old formats without a concrete need. The policy will be revisited before public testing. M6.2a integration does not change existing MSIM v1–v4 support.
 
 ## Vision
 

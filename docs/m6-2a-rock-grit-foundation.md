@@ -1,6 +1,6 @@
 # M6.2a — Rock grit foundation
 
-Status: pending manual GUI acceptance. M6.2b, atomic block-to-grit extraction, is not implemented. Mining at 100% still leaves the block unchanged. Generation and support rules are unchanged.
+Status: accepted by the user. M6.2b, atomic block-to-grit extraction, is not implemented. Mining at 100% still leaves the block unchanged. Generation and support rules are unchanged.
 
 ## Identity, storage and conservation
 
@@ -46,7 +46,21 @@ After the v5 reader validation change, `gradlew.bat worldGenerationBenchmark` wa
 
 On the same JDK, `gradlew.bat test --tests 'miningsim.block.GritFoundationTest' --tests 'miningsim.app.BrushKeysTest'` and `gradlew.bat test build` passed. The v4 fixture was produced with `gradlew.bat m61aV4Fixture`, compiling the actual baseline writer over the current unchanged fixture setup. Tests cover replay and integer concentration totals, cross-chunk movement, water displacement, diagonal motion, both block sizes, mixed block/grit persistence and malformed references. Historical tests that explicitly assumed the writer emitted v4 were adjusted to v5 and retain the old-format checks. GUI was not run.
 
-## Manual acceptance — not performed by agent
+## User manual acceptance
+
+The user confirmed that all seven proposed scenarios passed and that the visual quality and physical behavior met expectations. The agent did not launch the GUI. The accepted checks covered:
+
+1. Normal and Shift+digit keys, saving, loading and camera controls.
+2. All four grit types, falling and pile formation.
+3. Interaction with water, sand, gravel, soil, wood, bedrock and fixed blocks.
+4. The GRIT diagnostic scene and neighboring cells with different compositions.
+5. Composition preservation during movement, and F3 and F9 diagnostics.
+6. Save/load of a mixed scene with composition preserved.
+7. Both block sizes, world generation, existing mining and crack visualization. A block at 100% mining progress remains intact.
+
+The next planned stage is **M6.2b — Physical Block Extraction & Grit Conversion**: destroy a fully mined fixed block, atomically transfer its full volume and all ore components to same-rock GRIT, let the grit settle using existing cellular physics, and update surrounding block support. It has not been implemented.
+
+### Detailed checks
 
 1. Check Shift+digits, unassigned keys and Ctrl+S/O, camera and existing controls.
 2. Paint all four grit rocks and compare them with fixed blocks.

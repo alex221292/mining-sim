@@ -157,9 +157,15 @@ A green build does not by itself prove the requested feature works. Check the ac
 
 ## Scope and change control
 
+### Pre-Alpha save compatibility
+
+MSIM save formats are an internal, evolving engine contract, not a public API. Backward and forward compatibility are not guaranteed. When the data model changes, a milestone may introduce a new version and retire historical versions without migrations. Correct save/load of the current format, preservation of all permanent data and world invariants, format versioning, integrity checks and validation, atomic writes, and safe rejection of unsupported versions without damaging the file or current world remain mandatory.
+
+Support and tests for older versions are not mandatory in new milestones unless explicitly requested. Existing compatibility may remain when it does not impede development; obsolete readers, fixtures and associated tests may be removed during subsequent persistence changes. Do not create separate milestones solely to preserve or remove historical formats without a concrete need. Revisit this policy before public testing.
+
 - Implement only the active user-approved milestone or explicitly requested extension.
 - Choose the simplest reversible interpretation for low-risk ambiguities; document the choice and proceed.
-- Ask before changing core storage representation, major dependencies, save-format compatibility, architectural ownership, or other high-impact contracts not covered by the task.
+- Ask before changing core storage representation, major dependencies, architectural ownership, or other high-impact contracts not covered by the task; save-format compatibility follows the Pre-Alpha policy above.
 - Do not use a technical difficulty as a reason to silently reduce scope. Investigate and iterate; if truly blocked, report the blocker.
 - Preserve user changes and existing uncommitted work. Check `git status` before edits. Never discard, reset, overwrite, or reformat unrelated work without authorization.
 - Do not run destructive commands, rewrite history, force-push, or remove user files without explicit approval.
