@@ -291,6 +291,36 @@ tasks.register('oreBenchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
     if (project.hasProperty('oreFixture')) args 'fixture'
 }
+tasks.register('gritBenchmark', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.GritBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+def m61aIoSource = layout.buildDirectory.dir('m61a-io-source')
+def m61aIoClasses = layout.buildDirectory.dir('m61a-io-classes')
+tasks.register('extractM61aIo') {
+    outputs.dir m61aIoSource
+    doLast {
+        def target = m61aIoSource.get().file('miningsim/persistence/FixedSessionIO.java').asFile
+        target.parentFile.mkdirs()
+        target.bytes = providers.exec { commandLine 'git', 'show', 'da5f9b64109961393570f108cb09c39151496ddb:src/main/java/miningsim/persistence/FixedSessionIO.java' }.standardOutput.asBytes.get()
+    }
+}
+tasks.register('compileM61aIo', JavaCompile) {
+    dependsOn 'classes', 'extractM61aIo'
+    source = fileTree(m61aIoSource) { include '**/*.java' }
+    classpath = sourceSets.main.runtimeClasspath
+    destinationDirectory = m61aIoClasses
+    javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.register('m61aV4Fixture', JavaExec) {
+    dependsOn 'compileM61aIo'
+    classpath = files(m61aIoClasses) + sourceSets.main.runtimeClasspath
+    mainClass = 'miningsim.benchmark.OreBenchmark'
+    args 'fixture'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
 tasks.register('oreDepositCalibration', JavaExec) {
     group = 'verification'
     classpath = sourceSets.main.runtimeClasspath

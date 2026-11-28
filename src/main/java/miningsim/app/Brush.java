@@ -23,7 +23,10 @@ public final class Brush {
         for (int dy = -radius; dy <= radius; dy++) for (int dx = -radius; dx <= radius; dx++) {
             int x = cx + dx, y = cy + dy;
             if (dx * dx + dy * dy <= radius * radius && world.contains(x, y)
-                    && (material==Material.AIR || occupancy==null || !occupancy.occupied(x,y))) world.set(x, y, material);
+                    && (material==Material.AIR || occupancy==null || !occupancy.occupied(x,y))) {
+                var result=world.set(x, y, material);
+                if(material.isGrit() && result!=World.Mutation.REJECTED) world.setGritOre(x,y,miningsim.resource.OreComposition.EMPTY);
+            }
         }
     }
 }

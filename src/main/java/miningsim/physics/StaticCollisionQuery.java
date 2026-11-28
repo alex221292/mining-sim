@@ -35,7 +35,7 @@ public final class StaticCollisionQuery {
 
     public static boolean solid(Material material) {
         return switch (Objects.requireNonNull(material)) {
-            case STONE, GRANITE, LIMESTONE, MARBLE, BEDROCK, WOOD, SAND, SOIL, GRAVEL -> true;
+            case STONE, GRANITE, LIMESTONE, MARBLE, BEDROCK, WOOD, SAND, SOIL, GRAVEL, STONE_GRIT, GRANITE_GRIT, LIMESTONE_GRIT, MARBLE_GRIT -> true;
             case AIR, WATER -> false;
         };
     }
@@ -43,7 +43,7 @@ public final class StaticCollisionQuery {
         if(policy==MaterialPolicy.LEGACY) return solid(material);
         return switch(material) {
             case STONE, GRANITE, LIMESTONE, MARBLE, BEDROCK, WOOD -> true;
-            case AIR, WATER, SAND, SOIL, GRAVEL -> false;
+            case AIR, WATER, SAND, SOIL, GRAVEL, STONE_GRIT, GRANITE_GRIT, LIMESTONE_GRIT, MARBLE_GRIT -> false;
         };
     }
 

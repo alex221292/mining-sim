@@ -63,6 +63,12 @@ public final class Main {
 
     private static final class Sandbox extends JPanel {
         private static final long TICK = 1_000_000_000L / 60;
+        private static final Color[] ORE_COLORS = oreColors();
+        private static Color[] oreColors() {
+            var colors=new Color[226];
+            for(int i=0;i<colors.length;i++) colors[i]=new Color(255,190,20,i);
+            return colors;
+        }
         private World world = new World(400, 300, World.Mode.BEDROCK_ENABLED);
         private InteractiveSession session;
         private FixedBlockSession fixed = new FixedBlockSession(world,12345);
@@ -134,16 +140,12 @@ public final class Main {
                         else if (e.getKeyCode() == KeyEvent.VK_O) chooseFile(false);
                         return;
                     }
+                    if(e.getKeyCode()>=KeyEvent.VK_0 && e.getKeyCode()<=KeyEvent.VK_9) {
+                        var selected=miningsim.app.BrushKeys.select(e.getKeyCode(),e.isShiftDown());
+                        if(selected!=null && (fixed!=null || selected==Material.STONE || !selected.isFixedRock())) brush=selected;
+                        return;
+                    }
                     switch (e.getKeyCode()) {
-                        case KeyEvent.VK_1 -> brush = Material.SAND;
-                        case KeyEvent.VK_2 -> brush = Material.WATER;
-                        case KeyEvent.VK_3 -> brush = Material.STONE;
-                        case KeyEvent.VK_4 -> brush = Material.WOOD;
-                        case KeyEvent.VK_5 -> brush = Material.GRAVEL;
-                        case KeyEvent.VK_6 -> brush = Material.SOIL;
-                        case KeyEvent.VK_7 -> { if(fixed!=null) brush = Material.GRANITE; }
-                        case KeyEvent.VK_8 -> { if(fixed!=null) brush = Material.LIMESTONE; }
-                        case KeyEvent.VK_9 -> { if(fixed!=null) brush = Material.MARBLE; }
                         case KeyEvent.VK_SPACE -> { control.togglePause(); accumulator = 0; }
                         case KeyEvent.VK_N -> { if (control.singleStep()) ticks++; }
                         case KeyEvent.VK_M -> { miningMode=!miningMode; left=right=false; if(fixed!=null) fixed.mining().stop(); }
@@ -265,12 +267,12 @@ public final class Main {
             try {
                 if (JOptionPane.showConfirmDialog(this, "Replace current world with a reference scene? Unsaved work will be lost.",
                         "Reference scene", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
-                int next = (sceneIndex + 1) % 12;
-                if(next==0) {
-                    var nextFixed=miningsim.block.OreReferenceScene.create(rockBlockSizeCells);
+                int next = (sceneIndex + 1) % 13;
+                if(next==0 || next==12) {
+                    var nextFixed=next==0?miningsim.block.OreReferenceScene.create(rockBlockSizeCells):miningsim.block.GritReferenceScene.create(rockBlockSizeCells);
                     var nextWorld=nextFixed.world(); var nextControl=new SimulationControl(nextFixed::tick); nextControl.togglePause();
                     if(session!=null) session.retire(); world=nextWorld; fixed=nextFixed; session=null; structural=null; control=nextControl;
-                    renderer=new Java2DRenderer(world.width(),world.height()); sceneIndex=0; sceneName="Ore content"; generationSeed=null;
+                    renderer=new Java2DRenderer(world.width(),world.height()); sceneIndex=next; sceneName=next==0?"Ore content":"Rock grit"; generationSeed=null;
                     left=right=strokeStarted=false; camera.reset(); return;
                 }
                 int legacy=next-1;
@@ -347,6 +349,20 @@ public final class Main {
             super.paintComponent(graphics);
             Graphics2D g = (Graphics2D) graphics.create();
             renderer.render(g, world, camera, getWidth(), getHeight());
+            if(oreOverlay>0) {
+                var visible=camera.visibleCells(getWidth(),getHeight(),world.width(),world.height());
+                var ore=miningsim.resource.OreId.values()[oreOverlay-1];
+                int max=new int[]{400000,80000,500,50}[oreOverlay-1];
+                for(int y=visible.top();y<visible.bottom();y++) for(int x=visible.left();x<visible.right();x++) {
+                    if(!world.get(x,y).isGrit()) continue;
+                    int ppm=world.gritOre(x,y).ppm(ore);
+                    if(ppm==0) continue;
+                    int alpha=45+(int)(180*Math.sqrt(Math.min(1.0,ppm/(double)max)));
+                    int sx=(int)Math.floor(camera.worldToScreenX(x)),sy=(int)Math.floor(camera.worldToScreenY(y));
+                    int ex=(int)Math.ceil(camera.worldToScreenX(x+1)),ey=(int)Math.ceil(camera.worldToScreenY(y+1));
+                    g.setColor(ORE_COLORS[alpha]); g.fillRect(sx,sy,ex-sx,ey-sy);
+                }
+            }
             if(fixed!=null) {
                 g.setColor(new Color(0x45515d));
                 for(var block:fixed.blocks().blocks()) {
@@ -374,9 +390,9 @@ public final class Main {
             g.setStroke(new BasicStroke(1));
             g.fillRect(0, 0, Math.min(getWidth(), 790), diagnostics ? 445 : 110);
             g.setColor(Color.WHITE);
-            g.drawString("1 Sand 2 Water 3 Stone 4 Wood 5 Gravel 6 Soil 7 Granite 8 Limestone 9 Marble", 8, 16);
+            g.drawString("2 Water 3 Stone block 4 Wood 7/8/9 rock blocks | Shift+1/3/5/6/7/8/9 granular", 8, 16);
             String runState=session!=null && session.blocked()?"BLOCKED":control.paused()?"PAUSED":session!=null && session.failure()!=null?"RETRYING":"RUNNING";
-            g.drawString("Mode: "+(miningMode?"MINING":"BRUSH")+" (M) | Brush: " + brush + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells:world.mode()==World.Mode.LEGACY?" | LEGACY v1":"") + " | " + runState + " | FPS: " + fps + " | TPS: " + tps, 8, 33);
+            g.drawString("Mode: "+(miningMode?"MINING":"BRUSH")+" (M) | Brush: " + brush + (brush.isFixedRock()?" FIXED BLOCK":"") + (fixed!=null?" | Rock block: "+rockBlockSizeCells+"x"+rockBlockSizeCells:world.mode()==World.Mode.LEGACY?" | LEGACY v1":"") + " | " + runState + " | FPS: " + fps + " | TPS: " + tps, 8, 33);
             var metrics = control.metrics();
             g.drawString(String.format(Locale.ROOT, "Tick ms: last %.3f | avg %.3f | max %.3f (120 ticks)",
                     metrics.lastMillis(), metrics.averageMillis(), metrics.maxMillis()), 8, 50);
@@ -388,6 +404,13 @@ public final class Main {
             g.drawString(fixed!=null?"F3: diagnostics | F4: scene | F7: size | F8: generate | F9 ore: "+(oreOverlay==0?"OFF":miningsim.resource.OreId.values()[oreOverlay-1]):"F3: diagnostics | F4: scene | F5: extract | F6: retry | F7: size | F8: generate",8,101);
             if(generationSeed!=null) g.drawString("Generated seed: "+generationSeed, 8, getHeight()-8);
             if (diagnostics) {
+                if(world.contains(hoverX,hoverY) && world.get(hoverX,hoverY).isGrit()) {
+                    var material=world.get(hoverX,hoverY);
+                    g.drawString("Cursor: GRIT | substance: "+material.rockSubstance(),8,305);
+                    var ores=world.gritOre(hoverX,hoverY).components();
+                    if(ores.isEmpty()) g.drawString("Ore: none",8,322);
+                    else { int line=0; for(var c:ores) g.drawString(String.format(Locale.ROOT,"Ore: %s %d ppm (%.4f%%)",c.ore(),c.ppm(),c.ppm()/10000.0),8,322+17*line++); }
+                }
                 if(fixed!=null) {
                     var b=fixed.blocks(); var list=b.blocks(); long falling=list.stream().filter(v->v.state()==miningsim.block.FixedBlockWorld.State.FALLING).count();
                     var support=b.supportDiagnostics();

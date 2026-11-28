@@ -12,7 +12,7 @@ import miningsim.app.Camera2D;
 public final class Java2DRenderer implements Renderer {
     private final BufferedImage image;
     private final int[] pixels;
-    private static final int[] COLORS = { 0xff161b22, 0xff808890, 0xffe6c66e, 0xff397bd2, 0xff855631, 0xff667482, 0xff62442e, 0xff554b68, 0xffb68e87, 0xffb9a585, 0xffc6c8cc };
+    private static final int[] COLORS = { 0xff161b22, 0xff808890, 0xffe6c66e, 0xff397bd2, 0xff855631, 0xff667482, 0xff62442e, 0xff554b68, 0xffb68e87, 0xffb9a585, 0xffc6c8cc, 0xff737b83, 0xffa78079, 0xffaa9677, 0xffb6b8bc };
     public Java2DRenderer(int width, int height) {
         image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();

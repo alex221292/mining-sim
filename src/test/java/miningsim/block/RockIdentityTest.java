@@ -59,8 +59,8 @@ class RockIdentityTest {
         for(int size:new int[]{4,8}) {
             var s=new FixedBlockSession(new World(32,33,World.Mode.BEDROCK_ENABLED),1,size);
             assertTrue(s.blocks().place(0,0,false));
-            // An empty v4 has a four-byte ore-section count absent from v2.
-            byte[] v4=save(s),old=java.util.Arrays.copyOf(v4,v4.length-4); old[7]=2; checksum(old);
+            // Remove the empty v4 block-ore and v5 palette/cell sections to construct v2.
+            byte[] v5=save(s),old=java.util.Arrays.copyOf(v5,v5.length-12); old[7]=2; checksum(old);
             assertEquals(Material.STONE,FixedSessionIO.read(new ByteArrayInputStream(old)).world().get(0,0));
             byte[] bad=save(s); bad[36]=(byte)255; checksum(bad);
             byte[] unknown=bad;

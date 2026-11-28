@@ -59,7 +59,7 @@ class OreContentTest {
             }
         }
     }
-    @Test void v3FixtureReadAndV4RoundTrip() throws Exception {
+    @Test void v3FixtureReadAndV5RoundTrip() throws Exception {
         byte[] v3=Base64.getDecoder().decode("TVNJTQAAAAMAAAAIAAAACQAAAAEAAAAEAAAAAQAAAAAAAAACCAgICAAAAAAICAgIAAAAAAgICAgAAAAACAgICAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAcHBwcHBwcHAAAAAAAAAAEAAAAAAAAAAAAAAAGHJQ6s");
         var old=FixedSessionIO.read(new ByteArrayInputStream(v3)).fixed();
         assertEquals(Material.GRANITE,old.world().get(0,0)); assertEquals(OreComposition.EMPTY,old.blocks().blockAt(0,0).ores());
@@ -68,7 +68,7 @@ class OreContentTest {
             assertTrue(s.blocks().place(z,0,false,Material.MARBLE,ORES));
             assertTrue(s.blocks().place(2*z,0,false,Material.STONE));
             for(int i=0;i<3;i++) s.tick();
-            var data=save(s); assertEquals(4,data[7]);
+            var data=save(s); assertEquals(5,data[7]);
             var loaded=FixedSessionIO.read(new ByteArrayInputStream(data)).fixed();
             assertEquals(s.blocks().saveState(),loaded.blocks().saveState());
             assertEquals(ORES,loaded.blocks().blockAt(z,0).ores());

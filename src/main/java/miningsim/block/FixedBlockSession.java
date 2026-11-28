@@ -48,7 +48,10 @@ public final class FixedBlockSession {
         if(!world.contains(cx,cy)) return;
         for(int dy=-radius;dy<=radius;dy++) for(int dx=-radius;dx<=radius;dx++) {
             int x=cx+dx,y=cy+dy;
-            if(dx*dx+dy*dy<=radius*radius && world.contains(x,y) && blocks.blockAt(x,y)==null) world.set(x,y,material);
+            if(dx*dx+dy*dy<=radius*radius && world.contains(x,y) && blocks.blockAt(x,y)==null) {
+                var result=world.set(x,y,material);
+                if(material.isGrit() && result!=World.Mutation.REJECTED) world.setGritOre(x,y,miningsim.resource.OreComposition.EMPTY);
+            }
         }
     }
 }

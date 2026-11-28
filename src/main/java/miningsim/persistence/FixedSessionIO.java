@@ -13,9 +13,9 @@ import miningsim.world.World;
 import miningsim.resource.OreComposition;
 import miningsim.resource.OreId;
 
-/** MSIM v4 fixed-block sessions; reads v2/v3 and delegates v1 to WorldIO. Streams remain caller-owned. */
+/** MSIM v5 fixed-block sessions; reads v2–v4 and delegates v1 to WorldIO. Streams remain caller-owned. */
 public final class FixedSessionIO {
-    private static final int MAGIC=0x4d53494d, VERSION=4;
+    private static final int MAGIC=0x4d53494d, VERSION=5;
     private static int rockCode(Material m) {
         return switch(m) { case STONE -> 0; case GRANITE -> 1; case LIMESTONE -> 2; case MARBLE -> 3; default -> throw new IllegalArgumentException("Invalid rock material"); };
     }
@@ -50,6 +50,25 @@ public final class FixedSessionIO {
             out.writeLong(b.id()); out.writeByte(b.ores().components().size());
             for(var c:b.ores().components()) { out.writeByte(c.ore().id()); out.writeInt(c.ppm()); }
         }
+        var palette = new java.util.LinkedHashMap<OreComposition,Integer>();
+        int oreCells = 0;
+        for(int y=0;y<w.height();y++) for(int x=0;x<w.width();x++) {
+            var ore=w.gritOre(x,y);
+            if(!ore.components().isEmpty()) {
+                if(!w.get(x,y).isGrit()) throw new IOException("Ore on non-grit cell");
+                palette.computeIfAbsent(ore,k->palette.size()+1); oreCells++;
+            }
+        }
+        out.writeInt(palette.size());
+        for(var ore:palette.keySet()) {
+            out.writeByte(ore.components().size());
+            for(var c:ore.components()) { out.writeByte(c.ore().id()); out.writeInt(c.ppm()); }
+        }
+        out.writeInt(oreCells);
+        for(int y=0;y<w.height();y++) for(int x=0;x<w.width();x++) {
+            var ore=w.gritOre(x,y);
+            if(!ore.components().isEmpty()) { out.writeInt(y*w.width()+x); out.writeInt(palette.get(ore)); }
+        }
         out.flush(); var raw=new DataOutputStream(output); raw.writeInt((int)crc.getValue()); raw.flush();
     }
     /** Owner-thread save barrier: later commands stay queued and cannot change these bytes. */
@@ -71,7 +90,7 @@ public final class FixedSessionIO {
             if(header.readInt()!=MAGIC) throw new IOException("Invalid MSIM magic");
             int version=header.readInt(); input.reset();
             if(version==1) { var world=WorldIO.read(input); return new Loaded(world,null); }
-            if(version!=2 && version!=3 && version!=VERSION) throw new IOException("Unsupported MSIM version: "+version);
+            if(version!=2 && version!=3 && version!=4 && version!=VERSION) throw new IOException("Unsupported MSIM version: "+version);
             var crc=new CRC32(); var in=new DataInputStream(new CheckedInputStream(input,crc));
             in.readInt(); in.readInt(); int width=in.readInt(),height=in.readInt(),mode=in.readInt(),size=in.readInt(),count=in.readInt(); long nextId=in.readLong();
             dimensions(width,height);
@@ -79,10 +98,13 @@ public final class FixedSessionIO {
             if(size!=4 && size!=8) throw new IOException("Invalid block size");
             if(count<0 || count>(long)width*height/(size*size)) throw new IOException("Invalid block count");
             var world=new World(width,height,World.Mode.BEDROCK_ENABLED);
+            int gritCount=0;
             for(int y=0;y<height;y++) for(int x=0;x<width;x++) {
                 int id=in.readUnsignedByte(); Material material;
                 if(version==2 && id>7) throw new IOException("Invalid v2 material ID "+id);
+                if(version<5 && id>10) throw new IOException("Invalid historical material ID "+id);
                 try { material=Material.fromId((byte)id); } catch(IllegalArgumentException ex) { throw new IOException("Invalid material ID "+id,ex); }
+                if(material.isGrit()) gritCount++;
                 if((y==height-1)!=(material==Material.BEDROCK)) throw new IOException("Invalid BEDROCK boundary");
                 if(material!=Material.AIR && material!=Material.BEDROCK) world.set(x,y,material);
             }
@@ -92,7 +114,7 @@ public final class FixedSessionIO {
                 if(state>1 || pinned>1 || version==2 && substance!=0) throw new IOException("Invalid block state or substance");
                 records.add(new FixedBlockWorld.SavedBlock(id,x,y,state==0?FixedBlockWorld.State.STATIC:FixedBlockWorld.State.FALLING,wait,pinned==1,rockMaterial(substance)));
             }
-            if(version==4) {
+            if(version>=4) {
                 int oreBlocks=in.readInt(); if(oreBlocks<0 || oreBlocks>count) throw new IOException("Invalid ore block count");
                 var indexes=new java.util.HashMap<Long,Integer>();
                 for(int i=0;i<records.size();i++) if(indexes.put(records.get(i).id(),i)!=null) throw new IOException("Duplicate block ID");
@@ -107,6 +129,36 @@ public final class FixedSessionIO {
                         records.set(index,new FixedBlockWorld.SavedBlock(b.id(),b.x(),b.y(),b.state(),b.unsupportedTicks(),b.pinned(),b.material(),OreComposition.of(components)));
                     } catch(IllegalArgumentException | NullPointerException ex) { throw new IOException("Invalid ore composition",ex); }
                 }
+            }
+            if(version>=5) {
+                int n=in.readInt();
+                if(n<0 || n>gritCount) throw new IOException("Invalid grit palette size");
+                var palette=new ArrayList<OreComposition>(n);
+                var unique=new java.util.HashSet<OreComposition>();
+                for(int i=0;i<n;i++) {
+                    int countComponents=in.readUnsignedByte();
+                    if(countComponents==0 || countComponents>OreId.values().length) throw new IOException("Invalid grit composition size");
+                    var components=new OreComposition.Component[countComponents];
+                    try {
+                        for(int j=0;j<countComponents;j++) components[j]=new OreComposition.Component(OreId.fromId(in.readUnsignedByte()),in.readInt());
+                        var ore=OreComposition.of(components);
+                        if(!unique.add(ore)) throw new IOException("Duplicate grit composition");
+                        palette.add(ore);
+                    } catch(IllegalArgumentException | NullPointerException ex) { throw new IOException("Invalid grit composition",ex); }
+                }
+                int cells=in.readInt();
+                if(cells<0 || cells>gritCount || cells<n) throw new IOException("Invalid grit ore count");
+                var used=new boolean[n];
+                int previous=-1;
+                for(int i=0;i<cells;i++) {
+                    int index=in.readInt(), ref=in.readInt();
+                    if(index<=previous || index>=(long)width*height || ref<1 || ref>n) throw new IOException("Invalid grit ore record");
+                    previous=index; int x=index%width,y=index/width;
+                    if(!world.get(x,y).isGrit()) throw new IOException("Ore on non-grit cell");
+                    world.setGritOre(x,y,palette.get(ref-1));
+                    used[ref-1]=true;
+                }
+                for(boolean value:used) if(!value) throw new IOException("Unused grit palette entry");
             }
             long actual=crc.getValue(); var raw=new DataInputStream(input); long expected=Integer.toUnsignedLong(raw.readInt());
             if(actual!=expected) throw new IOException("MSIM checksum mismatch");

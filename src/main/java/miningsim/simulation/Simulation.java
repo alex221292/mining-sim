@@ -72,6 +72,8 @@ public final class Simulation {
             var shadow=new World(world.width(),world.height(),world.mode());
             for(int y=0;y<world.height();y++) for(int x=0;x<world.width();x++) {
                 var material=world.get(x,y);
+                // Historical rigid-body recovery has no metadata-aware batch contract.
+                if(material.isGrit()) return false;
                 if(material!=Material.AIR && material!=Material.BEDROCK && shadow.set(x,y,material)!=World.Mutation.CHANGED) return false;
                 if(material==Material.BEDROCK && shadow.get(x,y)!=Material.BEDROCK) return false;
             }
@@ -218,8 +220,11 @@ public final class Simulation {
         // Granular materials displace liquid, preserving both particles.
         if (target != Material.AIR && !material.canDisplace(target)) return false;
         if (target == Material.WATER && moved[ny * world.width() + nx]) return false;
-        world.set(nx, ny, material);
-        world.set(x, y, target);
+        if (material.isGrit()) world.swapCells(x, y, nx, ny);
+        else {
+            world.set(nx, ny, material);
+            world.set(x, y, target);
+        }
         moved[ny * world.width() + nx] = true;
         if (target == Material.WATER) moved[y * world.width() + x] = true;
         if (instrument) movements++;

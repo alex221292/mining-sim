@@ -32,7 +32,9 @@ M5.6b procedural ore deposits and the F9 diagnostic overlay were manually accept
 
 M6.1 fixed-block mining interaction was manually accepted by the user: all eight proposed checks passed, including rock resistance and F3, both block sizes, interruption and target switching, pause and single-step, multicomponent ore and F9, conservation on completion, save/load and existing brushes and generation: [M6.1](docs/m6-1-mining-interaction.md).
 
-M6.1a block damage visualization was visually accepted by the user, who confirmed it works and provided screenshots showing different crack stages on 4×4 and 8×8 blocks in generated worlds: [M6.1a](docs/m6-1a-block-damage-visualization.md). The next stage is M6.2 — Physical Extraction & Rock Grit, not yet implemented.
+M6.1a block damage visualization was visually accepted by the user, who confirmed it works and provided screenshots showing different crack stages on 4×4 and 8×8 blocks in generated worlds: [M6.1a](docs/m6-1a-block-damage-visualization.md).
+
+M6.2a adds rock GRIT with moving ore compositions and MSIM v5; manual GUI acceptance is pending: [M6.2a](docs/m6-2a-rock-grit-foundation.md). M6.2b atomic block-to-grit extraction remains unimplemented.
 
 ## Vision
 
@@ -235,7 +237,7 @@ LWJGL/OpenGL renderer, GPU texture updates, lighting, visual effects. Preserve C
 
 Progression, equipment, hazards, water management, material-specific mining, inventory and goals.
 
-**M6.1a: Block Damage Visualization** implements ten cumulative, backend-independent crack stages with cached Java2D masks; the user accepted the visual result for both block sizes. See [M6.1a](docs/m6-1a-block-damage-visualization.md). The next stage is M6.2 — Physical Extraction & Rock Grit.
+**M6.1a: Block Damage Visualization** implements ten cumulative, backend-independent crack stages with cached Java2D masks; the user accepted the visual result for both block sizes. See [M6.1a](docs/m6-1a-block-damage-visualization.md). M6.2a adds grit; the next stage is M6.2b atomic extraction.
 
 ## Open design questions
 

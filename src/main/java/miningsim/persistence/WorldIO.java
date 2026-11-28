@@ -27,6 +27,8 @@ public final class WorldIO {
     public static void write(World world, OutputStream output) throws IOException {
         validateMode(world);
         validateDimensions(world.width(), world.height());
+        for (int y=0; y<world.height(); y++) for (int x=0; x<world.width(); x++)
+            if (Byte.toUnsignedInt(world.get(x,y).id())>6) throw new IOException("MSIM v1 cannot save this material");
         CRC32 crc = new CRC32();
         DataOutputStream checked = new DataOutputStream(new CheckedOutputStream(output, crc));
         checked.writeInt(MAGIC); checked.writeInt(VERSION);

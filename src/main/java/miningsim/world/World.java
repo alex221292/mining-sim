@@ -8,6 +8,7 @@ import java.util.List;
 import miningsim.fragment.FragmentRegistry;
 import miningsim.physics.RigidBodyOccupancyIndex;
 import miningsim.physics.RigidBodySystem;
+import miningsim.resource.OreComposition;
 
 public final class World {
     private static final Object SETTLING_PUBLICATION_TOKEN=new Object();
@@ -96,6 +97,52 @@ public final class World {
         return chunks[(y >>> CHUNK_SHIFT) * chunkColumns + (x >>> CHUNK_SHIFT)];
     }
     public Material get(int x, int y) { return Material.fromId(chunkAt(x, y).cells[((y & CHUNK_MASK) << CHUNK_SHIFT) | (x & CHUNK_MASK)]); }
+    public OreComposition gritOre(int x, int y) {
+        Chunk chunk = chunkAt(x, y);
+        return chunk.ore(((y & CHUNK_MASK) << CHUNK_SHIFT) | (x & CHUNK_MASK));
+    }
+    /** Set the immutable composition of an existing grit cell. */
+    public void setGritOre(int x, int y, OreComposition ore) {
+        Objects.requireNonNull(ore);
+        Chunk chunk = chunkAt(x, y);
+        int index = ((y & CHUNK_MASK) << CHUNK_SHIFT) | (x & CHUNK_MASK);
+        if (!Material.fromId(chunk.cells[index]).isGrit()) throw new IllegalArgumentException("Not grit");
+        if (chunk.ore(index).equals(ore)) return;
+        long nextRevision = Math.incrementExact(mutationRevision);
+        chunk.putOre(index, ore);
+        mutationRevision = nextRevision;
+    }
+    /** Swap two non-bedrock cells, including their compositions, before notifying observers. */
+    public void swapCells(int x, int y, int nx, int ny) {
+        Chunk a = chunkAt(x, y), b = chunkAt(nx, ny);
+        int ai = ((y & CHUNK_MASK) << CHUNK_SHIFT) | (x & CHUNK_MASK);
+        int bi = ((ny & CHUNK_MASK) << CHUNK_SHIFT) | (nx & CHUNK_MASK);
+        byte av = a.cells[ai], bv = b.cells[bi];
+        if (av == Material.BEDROCK.id() || bv == Material.BEDROCK.id()) throw new IllegalArgumentException("Cannot swap bedrock");
+        if (x == nx && y == ny) return;
+        OreComposition ao = a.ore(ai), bo = b.ore(bi);
+        long next = Math.addExact(mutationRevision, 2);
+        boolean rigid = rigidTerrain(Material.fromId(av)) || rigidTerrain(Material.fromId(bv));
+        long terrain = rigid ? Math.addExact(rigidTerrainRevision, 2) : rigidTerrainRevision;
+        // Allocate before publication; do not drop empty arrays until both cells are written.
+        if (!bo.components().isEmpty() && a.ores == null) a.ores = new OreComposition[Chunk.SIZE * Chunk.SIZE];
+        if (!ao.components().isEmpty() && b.ores == null) b.ores = new OreComposition[Chunk.SIZE * Chunk.SIZE];
+        if (a.ores != null) a.ores[ai] = bo.components().isEmpty() ? null : bo;
+        if (b.ores != null) b.ores[bi] = ao.components().isEmpty() ? null : ao;
+        if (a != b) {
+            int delta = (bo.components().isEmpty() ? 0 : 1) - (ao.components().isEmpty() ? 0 : 1);
+            a.oreCount += delta; b.oreCount -= delta;
+            if (a.oreCount == 0) a.ores = null;
+            if (b.oreCount == 0) b.ores = null;
+        }
+        a.cells[ai] = bv; b.cells[bi] = av;
+        mutationRevision = next; rigidTerrainRevision = terrain;
+        if (trackActivity) {
+            changedTiles[(y / ACTIVITY_TILE_SIZE) * tileColumns + x / ACTIVITY_TILE_SIZE] = true;
+            changedTiles[(ny / ACTIVITY_TILE_SIZE) * tileColumns + nx / ACTIVITY_TILE_SIZE] = true;
+        }
+        if (changeSink != null) { changeSink.changed(nx, ny, bv, av); changeSink.changed(x, y, av, bv); }
+    }
     /** Reusable live read view of one bounded row segment; not a snapshot. */
     public final class RowSegment {
         private byte[] rowCells;
@@ -125,6 +172,7 @@ public final class World {
         boolean rigidChange=rigidTerrain(Material.fromId(previous)) || rigidTerrain(material);
         long nextRigidRevision=rigidChange?Math.addExact(rigidTerrainRevision,1):rigidTerrainRevision;
         chunk.cells[localIndex] = id;
+        chunk.putOre(localIndex, OreComposition.EMPTY);
         mutationRevision = nextRevision;
         rigidTerrainRevision=nextRigidRevision;
         if (trackActivity) changedTiles[(y / ACTIVITY_TILE_SIZE) * tileColumns + x / ACTIVITY_TILE_SIZE] = true;
@@ -293,7 +341,9 @@ public final class World {
         long nextRigidRevision=rigidChange?Math.addExact(rigidTerrainRevision,1):rigidTerrainRevision;
         for (CellChange c : notification) {
             Chunk chunk = chunkAt(c.x(),c.y());
-            chunk.cells[((c.y() & CHUNK_MASK) << CHUNK_SHIFT) | (c.x() & CHUNK_MASK)] = c.replacement().id();
+            int index = ((c.y() & CHUNK_MASK) << CHUNK_SHIFT) | (c.x() & CHUNK_MASK);
+            chunk.cells[index] = c.replacement().id();
+            chunk.putOre(index, OreComposition.EMPTY);
             if (trackActivity) changedTiles[(c.y() / ACTIVITY_TILE_SIZE) * tileColumns + c.x() / ACTIVITY_TILE_SIZE] = true;
         }
         mutationRevision = nextRevision;
@@ -314,7 +364,7 @@ public final class World {
             int bottomChunkRow = (height - 1) >>> CHUNK_SHIFT;
             int bottomOffset = ((height - 1) & CHUNK_MASK) << CHUNK_SHIFT;
             for (int i = 0; i < chunks.length; i++) {
-                if (i / chunkColumns == bottomChunkRow) Arrays.fill(chunks[i].cells, 0, bottomOffset, Material.AIR.id());
+                if (i / chunkColumns == bottomChunkRow) { Arrays.fill(chunks[i].cells, 0, bottomOffset, Material.AIR.id()); chunks[i].ores = null; chunks[i].oreCount = 0; }
                 else chunks[i].clear();
             }
         }
